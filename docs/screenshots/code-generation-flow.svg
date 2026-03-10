@@ -1,0 +1,98 @@
+<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1200" height="800" fill="#0f172a"/>
+
+  <!-- Header -->
+  <rect width="1200" height="50" fill="#1e293b"/>
+  <text x="20" y="32" font-family="Arial, sans-serif" font-size="18" fill="#f1f5f9">🔍 Local Review Critic</text>
+
+  <!-- Connection bar -->
+  <rect y="50" width="1200" height="45" fill="#1e293b"/>
+  <circle cx="30" cy="72" r="6" fill="#22c55e"/>
+  <text x="45" y="77" font-family="Arial, sans-serif" font-size="13" fill="#f1f5f9">Connected to LM Studio</text>
+
+  <!-- Divider -->
+  <line x1="480" y1="95" x2="480" y2="800" stroke="#334155" stroke-width="1"/>
+
+  <!-- Left pane (Chat) - Full conversation flow -->
+  <text x="20" y="125" font-family="Arial, sans-serif" font-size="11" fill="#64748b">You</text>
+  <rect x="20" y="135" width="420" height="60" rx="12" fill="#1e3a8a"/>
+  <text x="35" y="160" font-family="Arial, sans-serif" font-size="13" fill="#bfdbfe">Create a Python function to sort a list</text>
+  <text x="35" y="178" font-family="Arial, sans-serif" font-size="13" fill="#bfdbfe">using quicksort algorithm</text>
+
+  <text x="20" y="220" font-family="Arial, sans-serif" font-size="11" fill="#64748b">Generator</text>
+  <rect x="20" y="230" width="420" height="120" rx="12" fill="#334155"/>
+  <text x="35" y="255" font-family="Arial, sans-serif" font-size="12" fill="#f1f5f9">I'll create a quicksort implementation in Python.</text>
+  <text x="35" y="273" font-family="Arial, sans-serif" font-size="12" fill="#f1f5f9">This will use the divide-and-conquer approach</text>
+  <text x="35" y="291" font-family="Arial, sans-serif" font-size="12" fill="#f1f5f9">with a pivot element to partition the array.</text>
+  <text x="35" y="309" font-family="Arial, sans-serif" font-size="12" fill="#f1f5f9">Here's the implementation...</text>
+
+  <text x="20" y="375" font-family="Arial, sans-serif" font-size="11" fill="#64748b">Critic</text>
+  <rect x="20" y="385" width="420" height="140" rx="12" fill="#78350f"/>
+  <text x="35" y="410" font-family="Arial, sans-serif" font-size="12" fill="#fef3c7">Code Review Comments:</text>
+  <text x="35" y="428" font-family="Arial, sans-serif" font-size="12" fill="#fef3c7">✓ Algorithm implementation is correct</text>
+  <text x="35" y="446" font-family="Arial, sans-serif" font-size="12" fill="#fef3c7">⚠ Consider adding docstrings</text>
+  <text x="35" y="464" font-family="Arial, sans-serif" font-size="12" fill="#fef3c7">⚠ Add type hints for better clarity</text>
+  <text x="35" y="482" font-family="Arial, sans-serif" font-size="12" fill="#fef3c7">⚠ Handle edge case for empty lists</text>
+  <text x="35" y="500" font-family="Arial, sans-serif" font-size="12" fill="#fef3c7">✓ Time complexity is O(n log n) average</text>
+
+  <text x="20" y="550" font-family="Arial, sans-serif" font-size="11" fill="#64748b">Synthesis</text>
+  <rect x="20" y="560" width="420" height="100" rx="12" fill="#334155"/>
+  <text x="35" y="585" font-family="Arial, sans-serif" font-size="12" fill="#f1f5f9">I've refined the code based on the review:</text>
+  <text x="35" y="603" font-family="Arial, sans-serif" font-size="12" fill="#f1f5f9">• Added comprehensive docstring</text>
+  <text x="35" y="621" font-family="Arial, sans-serif" font-size="12" fill="#f1f5f9">• Added type hints (List[int])</text>
+  <text x="35" y="639" font-family="Arial, sans-serif" font-size="12" fill="#f1f5f9">• Added empty list validation</text>
+
+  <!-- Right pane (Code Viewer) - Final refined code -->
+  <rect x="500" y="110" width="680" height="30" fill="#1e293b"/>
+  <text x="515" y="130" font-family="Courier New, monospace" font-size="11" fill="#94a3b8">python</text>
+  <rect x="1090" y="115" width="75" height="20" rx="4" fill="#334155"/>
+  <text x="1100" y="129" font-family="Arial, sans-serif" font-size="11" fill="#cbd5e1">📋 Copy</text>
+
+  <rect x="500" y="140" width="680" height="640" fill="#0f172a"/>
+
+  <!-- Code with syntax highlighting -->
+  <text x="520" y="170" font-family="Courier New, monospace" font-size="12" fill="#22c55e">from</text>
+  <text x="565" y="170" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9"> typing </text>
+  <text x="625" y="170" font-family="Courier New, monospace" font-size="12" fill="#22c55e">import</text>
+  <text x="680" y="170" font-family="Courier New, monospace" font-size="12" fill="#60a5fa"> List</text>
+
+  <text x="520" y="210" font-family="Courier New, monospace" font-size="12" fill="#22c55e">def</text>
+  <text x="555" y="210" font-family="Courier New, monospace" font-size="12" fill="#60a5fa"> quicksort</text>
+  <text x="640" y="210" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">(arr: </text>
+  <text x="690" y="210" font-family="Courier New, monospace" font-size="12" fill="#60a5fa">List</text>
+  <text x="725" y="210" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">[</text>
+  <text x="735" y="210" font-family="Courier New, monospace" font-size="12" fill="#22c55e">int</text>
+  <text x="760" y="210" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">]) -> </text>
+  <text x="810" y="210" font-family="Courier New, monospace" font-size="12" fill="#60a5fa">List</text>
+  <text x="845" y="210" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">[</text>
+  <text x="855" y="210" font-family="Courier New, monospace" font-size="12" fill="#22c55e">int</text>
+  <text x="880" y="210" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">]:</text>
+
+  <text x="540" y="235" font-family="Courier New, monospace" font-size="12" fill="#f97316">"""</text>
+  <text x="540" y="260" font-family="Courier New, monospace" font-size="12" fill="#f97316">Sort a list using quicksort algorithm.</text>
+  <text x="540" y="285" font-family="Courier New, monospace" font-size="12" fill="#f97316">"""</text>
+
+  <text x="540" y="310" font-family="Courier New, monospace" font-size="12" fill="#22c55e">if</text>
+  <text x="565" y="310" font-family="Courier New, monospace" font-size="12" fill="#22c55e"> not</text>
+  <text x="600" y="310" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9"> arr </text>
+  <text x="640" y="310" font-family="Courier New, monospace" font-size="12" fill="#22c55e">or</text>
+  <text x="665" y="310" font-family="Courier New, monospace" font-size="12" fill="#60a5fa"> len</text>
+  <text x="695" y="310" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">(arr) &lt;= </text>
+  <text x="770" y="310" font-family="Courier New, monospace" font-size="12" fill="#a78bfa">1</text>
+  <text x="785" y="310" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">:</text>
+
+  <text x="560" y="335" font-family="Courier New, monospace" font-size="12" fill="#22c55e">return</text>
+  <text x="610" y="335" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9"> arr</text>
+
+  <text x="540" y="385" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">pivot = arr[</text>
+  <text x="630" y="385" font-family="Courier New, monospace" font-size="12" fill="#60a5fa">len</text>
+  <text x="660" y="385" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">(arr) // </text>
+  <text x="735" y="385" font-family="Courier New, monospace" font-size="12" fill="#a78bfa">2</text>
+  <text x="750" y="385" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">]</text>
+
+  <text x="540" y="435" font-family="Courier New, monospace" font-size="12" fill="#64748b"># Partition and recursively sort...</text>
+
+  <!-- Placeholder indicator -->
+  <text x="600" y="700" font-family="Arial, sans-serif" font-size="11" fill="#64748b" text-anchor="middle">[Screenshot Placeholder - Shows complete workflow]</text>
+</svg>

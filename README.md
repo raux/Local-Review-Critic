@@ -4,6 +4,9 @@
 
 Local-Review-Critic is a full-stack web application that combines local language models with a sophisticated three-step code refinement pipeline to generate, review, and improve code based on user prompts. All processing happens locally using [LM Studio](https://lmstudio.ai/), ensuring your code never leaves your machine.
 
+![Main Interface](docs/screenshots/main-interface.svg)
+*Split-pane interface with chat on the left and syntax-highlighted code viewer on the right*
+
 ## ✨ Features
 
 - **Multi-Agent Workflow**: Three specialized agents work together to produce high-quality code
@@ -39,6 +42,16 @@ User Prompt
            ↓
     Final Code
 ```
+
+### Multi-Agent Workflow in Action
+
+![Code Generation Flow](docs/screenshots/code-generation-flow.svg)
+*Complete workflow showing user prompt, agent responses (Generator → Critic → Synthesis), and final refined code*
+
+### Pipeline Progress Indicators
+
+![Loading States](docs/screenshots/loading-states.svg)
+*Real-time phase indicators during code generation: Generating → Reviewing → Applying feedback*
 
 ## 📋 Prerequisites
 
@@ -112,6 +125,9 @@ The application will be available at `http://localhost:5173`
    - Ensure LM Studio is running with a model loaded
    - In the UI, verify the connection status shows "● Connected"
    - Select your preferred model from the dropdown (optional)
+
+![LM Studio Configuration](docs/screenshots/lm-studio-config.svg)
+*LM Studio configuration panel with connection status, URL input, and model selection*
 
 2. **Generate Code**:
    - Enter your code requirements in the chat input
