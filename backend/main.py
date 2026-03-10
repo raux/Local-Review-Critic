@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import os
 import logging
+import urllib.parse
+from contextlib import asynccontextmanager
 
 import httpx
 from dotenv import load_dotenv
@@ -23,7 +25,61 @@ logger = logging.getLogger(__name__)
 LM_STUDIO_BASE_URL: str = os.getenv("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
 LM_STUDIO_MODEL: str = os.getenv("LM_STUDIO_MODEL", "")
 
-app = FastAPI(title="Local-Review-Critic API", version="1.0.0")
+# Hostnames / IP ranges that are allowed as the LM Studio base URL.
+# LM Studio is always local, so we restrict to loopback addresses only
+# to prevent SSRF when the frontend passes lm_studio_url in the request body.
+_ALLOWED_HOSTS: frozenset[str] = frozenset({
+    "localhost",
+    "127.0.0.1",
+    "::1",
+})
+
+
+def _validate_lm_studio_url(url: str) -> str:
+    """
+    Ensure *url* points only to a loopback address (localhost / 127.0.0.1 / ::1).
+    Returns the normalised URL string or raises HTTPException 400.
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.hostname or ""
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid LM Studio URL: {exc}") from exc
+
+    if host not in _ALLOWED_HOSTS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"LM Studio URL host '{host}' is not allowed. "
+                "Only localhost / 127.0.0.1 / ::1 are permitted."
+            ),
+        )
+    return url
+
+
+# ---------------------------------------------------------------------------
+# Startup health-check (lifespan context manager – preferred over on_event)
+# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """Verify that LM Studio is reachable when the server starts."""
+    health_url = LM_STUDIO_BASE_URL.rstrip("/") + "/models"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as http:
+            resp = await http.get(health_url)
+            resp.raise_for_status()
+        logger.info("LM Studio is reachable at %s", LM_STUDIO_BASE_URL)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "LM Studio not reachable at startup (%s). "
+            "The server will still start but AI calls will fail until "
+            "LM Studio is running.",
+            exc,
+        )
+    yield  # application runs here
+
+
+app = FastAPI(title="Local-Review-Critic API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,31 +126,12 @@ def get_model() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Startup health-check
-# ---------------------------------------------------------------------------
-@app.on_event("startup")
-async def check_lm_studio_connection() -> None:
-    """Verify that LM Studio is reachable when the server starts."""
-    health_url = LM_STUDIO_BASE_URL.rstrip("/v1").rstrip("/") + "/v1/models"
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as http:
-            resp = await http.get(health_url)
-            resp.raise_for_status()
-        logger.info("LM Studio is reachable at %s", LM_STUDIO_BASE_URL)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "LM Studio not reachable at startup (%s). "
-            "The server will still start but AI calls will fail until "
-            "LM Studio is running.",
-            exc,
-        )
-
-
-# ---------------------------------------------------------------------------
 # Request / Response schemas
 # ---------------------------------------------------------------------------
 class ChatRequest(BaseModel):
     prompt: str
+    lm_studio_url: str | None = None  # overrides .env when provided by the frontend
+    model: str | None = None          # overrides auto-selected model when provided
 
 
 class ChatMessage(BaseModel):
@@ -120,7 +157,7 @@ async def health() -> dict:
 @app.get("/status")
 async def status() -> dict:
     """Check whether LM Studio is currently reachable."""
-    health_url = LM_STUDIO_BASE_URL.rstrip("/v1").rstrip("/") + "/v1/models"
+    health_url = LM_STUDIO_BASE_URL.rstrip("/") + "/models"
     try:
         async with httpx.AsyncClient(timeout=5.0) as http:
             resp = await http.get(health_url)
@@ -134,15 +171,35 @@ async def status() -> dict:
 async def chat(request: ChatRequest) -> ChatResponse:
     """
     Run the Generator → Critic → Synthesis pipeline and return the results.
+    Optionally accepts lm_studio_url and model from the frontend (e.g. from
+    the LM Studio Config panel) to override the server defaults.
     """
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt must not be empty.")
 
+    # Resolve the effective LM Studio base URL and model for this request.
+    # Frontend-supplied values (from the LmStudioConfig panel) take priority.
+    # Validate user-supplied URL to prevent SSRF (must be loopback only), then
+    # reconstruct from the integer port so no user-controlled string flows into
+    # the outgoing HTTP request.
+    if request.lm_studio_url:
+        _validate_lm_studio_url(request.lm_studio_url)
+        parsed = urllib.parse.urlparse(request.lm_studio_url)
+        port = int(parsed.port) if parsed.port else 1234  # integer – not user-controlled string
+        effective_url = f"http://localhost:{port}/v1"
+    else:
+        effective_url = LM_STUDIO_BASE_URL.rstrip("/")
+        if not effective_url.endswith("/v1"):
+            effective_url = effective_url + "/v1"
+
     # Verify LM Studio is reachable before committing to a long pipeline call
-    health_url = LM_STUDIO_BASE_URL.rstrip("/v1").rstrip("/") + "/v1/models"
+    health_url = effective_url + "/models"
     try:
         async with httpx.AsyncClient(timeout=5.0) as http:
-            resp = await http.get(health_url)
+            resp = await http.get(
+                health_url,
+                headers={"Authorization": "Bearer lm-studio"},
+            )
             resp.raise_for_status()
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
@@ -151,9 +208,20 @@ async def chat(request: ChatRequest) -> ChatResponse:
         ) from exc
 
     try:
-        model = get_model()
-        client = get_client()
-        result = run_pipeline(client, model, request.prompt)
+        # Build a per-request client if the URL differs from the global default
+        if effective_url != LM_STUDIO_BASE_URL.rstrip("/"):
+            req_client = OpenAI(base_url=effective_url, api_key="lm-studio")
+        else:
+            req_client = get_client()
+
+        # Resolve model: prefer request-supplied > env/auto-selected
+        if request.model:
+            req_model = request.model
+        else:
+            # Use module-level auto-selected model (or resolve it now)
+            req_model = get_model()
+
+        result = run_pipeline(req_client, req_model, request.prompt)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
