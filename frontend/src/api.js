@@ -33,7 +33,7 @@ export async function runChat(prompt, lmStudioUrl = null, model = null) {
  * @param {string}      prompt       – the user's coding request
  * @param {string|null} lmStudioUrl  – optional base URL override
  * @param {string|null} model        – optional model ID override
- * @returns {Promise<{content: string, reasoning?: string}>}
+ * @returns {Promise<{content: string, reasoning?: string, generated_code: string}>}
  */
 export async function generateCode(prompt, lmStudioUrl = null, model = null) {
   const payload = { prompt };

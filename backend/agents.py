@@ -13,9 +13,8 @@ logger = logging.getLogger(__name__)
 
 GENERATOR_SYSTEM = (
     "You are a specialized code generator. "
-    "Describe your approach and solution using only natural language. "
-    "Do not include code snippets, code blocks, or inline code in your response. "
-    "Explain the logic, structure, and design decisions in plain English."
+    "Provide your code solution inside markdown fenced code blocks (```language\\n...\\n```). "
+    "You may include brief natural language explanations outside the code blocks."
 )
 
 POSITIVE_CRITIC_SYSTEM = (
@@ -96,12 +95,18 @@ def generate_code(client: OpenAI, model: str, user_prompt: str) -> dict:
     Step 1: Generator creates initial code from user request.
 
     Returns a dict with:
-      - content: the generated code/response
+      - content: the full response (code + explanations)
       - reasoning: optional thinking/reasoning from the model
+      - generated_code: extracted code without markdown fences (for the code canvas)
     """
     logger.info("Step 1: Generator drafting initial code for prompt: %s", user_prompt)
     result = _chat_with_reasoning(client, model, GENERATOR_SYSTEM, user_prompt)
     logger.info("Generator draft response (length: %d chars)", len(result["content"]))
+
+    # Extract clean code for the code canvas
+    result["generated_code"] = extract_code(result["content"])
+    logger.info("Generated code extracted (length: %d chars)", len(result["generated_code"]))
+
     return result
 
 
@@ -206,13 +211,14 @@ def run_pipeline(client: OpenAI, model: str, user_prompt: str) -> dict:
     # Step 1 – Generator (first pass)
     gen_result = generate_code(client, model, user_prompt)
     chat_history.append({"role": "generator", "content": gen_result["content"]})
+    draft_code = gen_result["generated_code"]
 
     # Step 2a – Positive Critic reviews the draft
-    positive_result = critique_code(client, model, gen_result["content"], critic_type="positive")
+    positive_result = critique_code(client, model, draft_code, critic_type="positive")
     chat_history.append({"role": "positive_critic", "content": positive_result["content"]})
 
     # Step 2b – Negative Critic reviews the draft
-    negative_result = critique_code(client, model, gen_result["content"], critic_type="negative")
+    negative_result = critique_code(client, model, draft_code, critic_type="negative")
     chat_history.append({"role": "negative_critic", "content": negative_result["content"]})
 
     # Combine both critic feedbacks for synthesis
@@ -222,7 +228,7 @@ def run_pipeline(client: OpenAI, model: str, user_prompt: str) -> dict:
     )
 
     # Step 3 – Generator produces the final refined code
-    synth_result = synthesize_code(client, model, user_prompt, gen_result["content"], combined_comments)
+    synth_result = synthesize_code(client, model, user_prompt, draft_code, combined_comments)
     chat_history.append({"role": "generator", "content": synth_result["content"]})
 
     logger.info("Pipeline completed successfully.")

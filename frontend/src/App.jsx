@@ -89,7 +89,7 @@ export default function App() {
         lmConfig.model        || null,
       );
 
-      setDraftCode(data.content);
+      setDraftCode(data.generated_code);
       setMessages(prev => [...prev, { role: 'generator', content: data.content, reasoning: data.reasoning }]);
 
       // If there's reasoning/thinking, add it to chat
@@ -98,7 +98,7 @@ export default function App() {
       }
 
       setCurrentStep(1);
-      setFinalCode(data.content);  // Show initial code
+      setFinalCode(data.generated_code);  // Show extracted code only
     } catch (err) {
       const detail =
         err?.response?.data?.detail ||
