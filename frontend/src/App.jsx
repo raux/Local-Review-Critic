@@ -26,13 +26,13 @@ export default function App() {
   const [lmConfig, setLmConfig]     = useState({ lmStudioUrl: '', model: '' });
 
   // Step-by-step execution state
-  const [currentStep, setCurrentStep]       = useState(0);  // 0=initial, 1=generated, 2=critiqued, 3=synthesized
-  const [userPrompt, setUserPrompt]         = useState('');
-  const [draftCode, setDraftCode]           = useState('');
-  const [criticComments, setCriticComments] = useState('');
-  const [positiveCriticComments, setPositiveCriticComments] = useState('');
-  const [negativeCriticComments, setNegativeCriticComments] = useState('');
-  const [isProcessing, setIsProcessing]     = useState(false);
+  const [currentStep, setCurrentStep]               = useState(0);  // 0=initial, 1=generated, 2=critiqued, 3=synthesized
+  const [userPrompt, setUserPrompt]                 = useState('');
+  const [draftCode, setDraftCode]                   = useState('');
+  const [criticComments, setCriticComments]         = useState('');
+  const [optimisticCriticComments, setOptimisticCriticComments] = useState('');
+  const [pessimisticCriticComments, setPessimisticCriticComments] = useState('');
+  const [isProcessing, setIsProcessing]             = useState(false);
 
   // AGENT.MD generation state
   const [generatorMd, setGeneratorMd]       = useState('');
@@ -121,14 +121,14 @@ export default function App() {
     }
   };
 
-  const handleCritique = async (criticType = 'negative') => {
+  const handleCritique = async (criticType = 'pessimistic') => {
     if (!draftCode || isProcessing) return;
 
     setIsProcessing(true);
     setPhase('reviewing');
     setError('');
 
-    const role = criticType === 'positive' ? 'positive_critic' : 'negative_critic';
+    const role = criticType === 'optimistic' ? 'optimistic_critic' : 'pessimistic_critic';
 
     try {
       const data = await critiqueCode(
@@ -138,19 +138,19 @@ export default function App() {
         lmConfig.model        || null,
       );
 
-      if (criticType === 'positive') {
-        setPositiveCriticComments(data.content);
+      if (criticType === 'optimistic') {
+        setOptimisticCriticComments(data.content);
       } else {
-        setNegativeCriticComments(data.content);
+        setPessimisticCriticComments(data.content);
       }
       // Build combined critic comments for synthesis.
       // Use data.content for the current critic type (fresh value) and
       // existing state for the other type (unchanged, already up-to-date).
-      const newPositive = criticType === 'positive' ? data.content : positiveCriticComments;
-      const newNegative = criticType === 'negative' ? data.content : negativeCriticComments;
+      const newOptimistic = criticType === 'optimistic' ? data.content : optimisticCriticComments;
+      const newPessimistic = criticType === 'pessimistic' ? data.content : pessimisticCriticComments;
       const combined = [
-        newPositive ? `Positive feedback:\n${newPositive}` : '',
-        newNegative ? `Negative feedback:\n${newNegative}` : '',
+        newOptimistic ? `Optimistic Coding feedback:\n${newOptimistic}` : '',
+        newPessimistic ? `Pessimistic Coding (Defensive Programming) feedback:\n${newPessimistic}` : '',
       ].filter(Boolean).join('\n\n');
       setCriticComments(combined);
 
@@ -283,7 +283,7 @@ export default function App() {
       <header className="flex items-center gap-3 px-5 py-3 bg-slate-800 border-b border-slate-700 flex-shrink-0">
         <span className="text-lg font-semibold tracking-tight">🔍 Local Review Critic</span>
         <span className="text-xs text-slate-500 hidden sm:block">
-          Generator → Positive Critic ↔ Negative Critic → Synthesis · powered by LM Studio
+          Generator → Optimistic Coding ↔ Pessimistic/Defensive Coding → Synthesis · powered by LM Studio
         </span>
       </header>
 
@@ -345,25 +345,25 @@ export default function App() {
                 {currentStep === 1 && (
                   <>
                     <button
-                      onClick={() => handleCritique('positive')}
+                      onClick={() => handleCritique('optimistic')}
                       disabled={isProcessing}
                       className="px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600
                                  disabled:opacity-40 disabled:cursor-not-allowed transition-colors
                                  text-sm font-medium"
                     >
-                      {isProcessing ? '⏳ Processing...' : '👍 Positive Review'}
+                      {isProcessing ? '⏳ Processing...' : '✨ Optimistic Review'}
                     </button>
                     <button
-                      onClick={() => handleCritique('negative')}
+                      onClick={() => handleCritique('pessimistic')}
                       disabled={isProcessing}
                       className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600
                                  disabled:opacity-40 disabled:cursor-not-allowed transition-colors
                                  text-sm font-medium"
                     >
-                      {isProcessing ? '⏳ Processing...' : '👎 Negative Review'}
+                      {isProcessing ? '⏳ Processing...' : '🛡️ Pessimistic/Defensive Review'}
                     </button>
                     <span className="text-xs text-slate-400">
-                      Choose a positive or negative critic to review the generated code
+                      Choose Optimistic (strengths) or Pessimistic (defensive, issues) review
                     </span>
                   </>
                 )}
@@ -371,22 +371,22 @@ export default function App() {
                 {currentStep === 2 && (
                   <>
                     <button
-                      onClick={() => handleCritique('positive')}
+                      onClick={() => handleCritique('optimistic')}
                       disabled={isProcessing}
                       className="px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600
                                  disabled:opacity-40 disabled:cursor-not-allowed transition-colors
                                  text-sm font-medium"
                     >
-                      {isProcessing ? '⏳ Processing...' : '👍 Positive Review'}
+                      {isProcessing ? '⏳ Processing...' : '✨ Optimistic Review'}
                     </button>
                     <button
-                      onClick={() => handleCritique('negative')}
+                      onClick={() => handleCritique('pessimistic')}
                       disabled={isProcessing}
                       className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600
                                  disabled:opacity-40 disabled:cursor-not-allowed transition-colors
                                  text-sm font-medium"
                     >
-                      {isProcessing ? '⏳ Processing...' : '👎 Negative Review'}
+                      {isProcessing ? '⏳ Processing...' : '🛡️ Pessimistic/Defensive Review'}
                     </button>
                     <button
                       onClick={handleSynthesize}
@@ -414,8 +414,8 @@ export default function App() {
                   onClick={() => {
                     setFinalCode(draftCode);
                     setCriticComments('');
-                    setPositiveCriticComments('');
-                    setNegativeCriticComments('');
+                    setOptimisticCriticComments('');
+                    setPessimisticCriticComments('');
                     setCurrentStep(1);
                     setGeneratorMd('');
                     setCriticMd('');
@@ -454,8 +454,8 @@ export default function App() {
                     setUserPrompt('');
                     setDraftCode('');
                     setCriticComments('');
-                    setPositiveCriticComments('');
-                    setNegativeCriticComments('');
+                    setOptimisticCriticComments('');
+                    setPessimisticCriticComments('');
                     setFinalCode('');
                     setMessages([]);
                     setGeneratorMd('');

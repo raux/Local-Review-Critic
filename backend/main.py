@@ -17,8 +17,8 @@ from pydantic import BaseModel
 
 from agents import (
     run_pipeline, generate_code, critique_code, synthesize_code,
-    generate_agent_md, GENERATOR_SYSTEM, POSITIVE_CRITIC_SYSTEM,
-    NEGATIVE_CRITIC_SYSTEM,
+    generate_agent_md, GENERATOR_SYSTEM, OPTIMISTIC_CRITIC_SYSTEM,
+    PESSIMISTIC_CRITIC_SYSTEM,
 )
 
 load_dotenv()
@@ -194,7 +194,7 @@ class GenerateRequest(BaseModel):
 
 class CritiqueRequest(BaseModel):
     draft_code: str
-    critic_type: str = "negative"  # "positive" or "negative"
+    critic_type: str = "pessimistic"  # "optimistic" or "pessimistic" (also accepts legacy "positive"/"negative")
     lm_studio_url: str | None = None
     model: str | None = None
 
@@ -303,13 +303,17 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
 async def critique(request: CritiqueRequest) -> StepResponse:
     """
     Step 2: Critique the draft code.
-    Accepts critic_type: "positive" (strengths-focused) or "negative" (issues-focused).
+    Accepts critic_type: "optimistic" (strengths-focused) or "pessimistic" (issues-focused, defensive programming).
+    Also accepts legacy values: "positive" → "optimistic", "negative" → "pessimistic".
     Returns the review/feedback and optional reasoning/thinking from the model.
     """
     if not request.draft_code.strip():
         raise HTTPException(status_code=400, detail="Draft code must not be empty.")
-    if request.critic_type not in ("positive", "negative"):
-        raise HTTPException(status_code=400, detail="critic_type must be 'positive' or 'negative'.")
+    if request.critic_type not in ("optimistic", "pessimistic", "positive", "negative"):
+        raise HTTPException(
+            status_code=400,
+            detail="critic_type must be 'optimistic', 'pessimistic' (or legacy 'positive', 'negative')."
+        )
 
     try:
         req_client, req_model = await _resolve_client_and_model(
@@ -376,15 +380,15 @@ async def generate_agent_md_endpoint(request: AgentMdRequest) -> AgentMdResponse
         gen_md = generate_agent_md(
             req_client, req_model, "Generator", GENERATOR_SYSTEM, request.generator_output
         )
-        positive_critic_md = generate_agent_md(
-            req_client, req_model, "Positive Critic", POSITIVE_CRITIC_SYSTEM, request.critic_output
+        optimistic_critic_md = generate_agent_md(
+            req_client, req_model, "Optimistic Critic", OPTIMISTIC_CRITIC_SYSTEM, request.critic_output
         )
-        negative_critic_md = generate_agent_md(
-            req_client, req_model, "Negative Critic", NEGATIVE_CRITIC_SYSTEM, request.critic_output
+        pessimistic_critic_md = generate_agent_md(
+            req_client, req_model, "Pessimistic Critic", PESSIMISTIC_CRITIC_SYSTEM, request.critic_output
         )
         return AgentMdResponse(
             generator_md=gen_md["content"],
-            critic_md=positive_critic_md["content"] + "\n\n---\n\n" + negative_critic_md["content"],
+            critic_md=optimistic_critic_md["content"] + "\n\n---\n\n" + pessimistic_critic_md["content"],
         )
     except HTTPException:
         raise
