@@ -13,14 +13,27 @@ logger = logging.getLogger(__name__)
 
 GENERATOR_SYSTEM = (
     "You are a specialized code generator. "
-    "Output only code and brief explanations."
+    "Describe your approach and solution using only natural language. "
+    "Do not include code snippets, code blocks, or inline code in your response. "
+    "Explain the logic, structure, and design decisions in plain English."
 )
 
-CRITIC_SYSTEM = (
-    "You are a senior code reviewer. "
-    "Analyze the provided code for bugs, efficiency, and security. "
-    "Suggest specific improvements."
+POSITIVE_CRITIC_SYSTEM = (
+    "You are an encouraging senior code reviewer who focuses on strengths. "
+    "Analyze the provided work and highlight what was done well: "
+    "good design decisions, correct use of patterns, solid logic, and best practices followed. "
+    "Use only natural language. Do not include code snippets, code blocks, or inline code."
 )
+
+NEGATIVE_CRITIC_SYSTEM = (
+    "You are a rigorous senior code reviewer who focuses on finding issues. "
+    "Analyze the provided work for potential bugs, inefficiencies, security concerns, "
+    "and areas that need improvement. Suggest specific improvements. "
+    "Use only natural language. Do not include code snippets, code blocks, or inline code."
+)
+
+# Backward-compatible alias (deprecated: prefer POSITIVE/NEGATIVE_CRITIC_SYSTEM)
+CRITIC_SYSTEM = NEGATIVE_CRITIC_SYSTEM
 
 AGENT_MD_SYSTEM = (
     "You are a technical documentation writer. "
@@ -92,21 +105,38 @@ def generate_code(client: OpenAI, model: str, user_prompt: str) -> dict:
     return result
 
 
-def critique_code(client: OpenAI, model: str, draft_code: str) -> dict:
+def critique_code(client: OpenAI, model: str, draft_code: str, critic_type: str = "negative") -> dict:
     """
     Step 2: Critic reviews the draft code.
+
+    Args:
+        critic_type: "positive" for strengths-focused review,
+                     "negative" for issues-focused review.
 
     Returns a dict with:
       - content: the review/feedback
       - reasoning: optional thinking/reasoning from the model
     """
-    logger.info("Step 2: Critic reviewing the draft...")
-    critic_input = (
-        f"Please review the following code and suggest specific improvements:\n\n"
-        f"{draft_code}"
-    )
-    result = _chat_with_reasoning(client, model, CRITIC_SYSTEM, critic_input)
-    logger.info("Critic review response (length: %d chars)", len(result["content"]))
+    if critic_type == "positive":
+        system = POSITIVE_CRITIC_SYSTEM
+        label = "Positive Critic"
+        critic_input = (
+            "Please review the following work and highlight what was done well, "
+            "including good design decisions and best practices:\n\n"
+            f"{draft_code}"
+        )
+    else:
+        system = NEGATIVE_CRITIC_SYSTEM
+        label = "Negative Critic"
+        critic_input = (
+            "Please review the following work and identify potential issues, "
+            "bugs, inefficiencies, and suggest specific improvements:\n\n"
+            f"{draft_code}"
+        )
+
+    logger.info("Step 2: %s reviewing the draft...", label)
+    result = _chat_with_reasoning(client, model, system, critic_input)
+    logger.info("%s review response (length: %d chars)", label, len(result["content"]))
     return result
 
 
@@ -162,12 +192,12 @@ def generate_agent_md(client: OpenAI, model: str, agent_name: str,
 
 def run_pipeline(client: OpenAI, model: str, user_prompt: str) -> dict:
     """
-    Execute the three-step Generator → Critic → Synthesis pipeline.
+    Execute the Generator → Positive Critic → Negative Critic → Synthesis pipeline.
     This function maintains backward compatibility with the existing /chat endpoint.
 
     Returns a dict with:
       - chat_history: list of {role, content} messages shown in the UI
-      - critic_comments: raw feedback from Agent B
+      - critic_comments: combined feedback from both critics
       - final_code: cleaned final output from the second Generator call
     """
     logger.info("Starting pipeline with user prompt: %s", user_prompt)
@@ -177,19 +207,28 @@ def run_pipeline(client: OpenAI, model: str, user_prompt: str) -> dict:
     gen_result = generate_code(client, model, user_prompt)
     chat_history.append({"role": "generator", "content": gen_result["content"]})
 
-    # Step 2 – Critic reviews the draft
-    critic_result = critique_code(client, model, gen_result["content"])
-    critic_comments = critic_result["content"]
-    chat_history.append({"role": "critic", "content": critic_comments})
+    # Step 2a – Positive Critic reviews the draft
+    positive_result = critique_code(client, model, gen_result["content"], critic_type="positive")
+    chat_history.append({"role": "positive_critic", "content": positive_result["content"]})
+
+    # Step 2b – Negative Critic reviews the draft
+    negative_result = critique_code(client, model, gen_result["content"], critic_type="negative")
+    chat_history.append({"role": "negative_critic", "content": negative_result["content"]})
+
+    # Combine both critic feedbacks for synthesis
+    combined_comments = (
+        f"Positive feedback:\n{positive_result['content']}\n\n"
+        f"Negative feedback:\n{negative_result['content']}"
+    )
 
     # Step 3 – Generator produces the final refined code
-    synth_result = synthesize_code(client, model, user_prompt, gen_result["content"], critic_comments)
+    synth_result = synthesize_code(client, model, user_prompt, gen_result["content"], combined_comments)
     chat_history.append({"role": "generator", "content": synth_result["content"]})
 
     logger.info("Pipeline completed successfully.")
 
     return {
         "chat_history": chat_history,
-        "critic_comments": critic_comments,
+        "critic_comments": combined_comments,
         "final_code": synth_result["final_code"],
     }

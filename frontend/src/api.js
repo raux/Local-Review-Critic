@@ -47,12 +47,13 @@ export async function generateCode(prompt, lmStudioUrl = null, model = null) {
  * Step 2: Critique the draft code.
  *
  * @param {string}      draftCode    – the code to review
+ * @param {string}      criticType   – "positive" or "negative"
  * @param {string|null} lmStudioUrl  – optional base URL override
  * @param {string|null} model        – optional model ID override
  * @returns {Promise<{content: string, reasoning?: string}>}
  */
-export async function critiqueCode(draftCode, lmStudioUrl = null, model = null) {
-  const payload = { draft_code: draftCode };
+export async function critiqueCode(draftCode, criticType = 'negative', lmStudioUrl = null, model = null) {
+  const payload = { draft_code: draftCode, critic_type: criticType };
   if (lmStudioUrl) payload.lm_studio_url = lmStudioUrl;
   if (model)       payload.model         = model;
   const { data } = await api.post('/critique', payload);

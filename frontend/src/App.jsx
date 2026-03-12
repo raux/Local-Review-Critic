@@ -30,6 +30,8 @@ export default function App() {
   const [userPrompt, setUserPrompt]         = useState('');
   const [draftCode, setDraftCode]           = useState('');
   const [criticComments, setCriticComments] = useState('');
+  const [positiveCriticComments, setPositiveCriticComments] = useState('');
+  const [negativeCriticComments, setNegativeCriticComments] = useState('');
   const [isProcessing, setIsProcessing]     = useState(false);
 
   // AGENT.MD generation state
@@ -119,22 +121,40 @@ export default function App() {
     }
   };
 
-  const handleCritique = async () => {
+  const handleCritique = async (criticType = 'negative') => {
     if (!draftCode || isProcessing) return;
 
     setIsProcessing(true);
     setPhase('reviewing');
     setError('');
 
+    const role = criticType === 'positive' ? 'positive_critic' : 'negative_critic';
+
     try {
       const data = await critiqueCode(
         draftCode,
+        criticType,
         lmConfig.lmStudioUrl || null,
         lmConfig.model        || null,
       );
 
-      setCriticComments(data.content);
-      setMessages(prev => [...prev, { role: 'critic', content: data.content, reasoning: data.reasoning }]);
+      if (criticType === 'positive') {
+        setPositiveCriticComments(data.content);
+      } else {
+        setNegativeCriticComments(data.content);
+      }
+      // Build combined critic comments for synthesis.
+      // Use data.content for the current critic type (fresh value) and
+      // existing state for the other type (unchanged, already up-to-date).
+      const newPositive = criticType === 'positive' ? data.content : positiveCriticComments;
+      const newNegative = criticType === 'negative' ? data.content : negativeCriticComments;
+      const combined = [
+        newPositive ? `Positive feedback:\n${newPositive}` : '',
+        newNegative ? `Negative feedback:\n${newNegative}` : '',
+      ].filter(Boolean).join('\n\n');
+      setCriticComments(combined);
+
+      setMessages(prev => [...prev, { role, content: data.content, reasoning: data.reasoning }]);
 
       // If there's reasoning/thinking, add it to chat
       if (data.reasoning) {
@@ -157,7 +177,7 @@ export default function App() {
         : `❌ Error: ${detail}`;
 
       setError(displayMsg);
-      setMessages(prev => [...prev, { role: 'critic', content: displayMsg }]);
+      setMessages(prev => [...prev, { role, content: displayMsg }]);
     } finally {
       setIsProcessing(false);
       setPhase(null);
@@ -263,7 +283,7 @@ export default function App() {
       <header className="flex items-center gap-3 px-5 py-3 bg-slate-800 border-b border-slate-700 flex-shrink-0">
         <span className="text-lg font-semibold tracking-tight">🔍 Local Review Critic</span>
         <span className="text-xs text-slate-500 hidden sm:block">
-          Generator → Critic → Synthesis · powered by LM Studio
+          Generator → Positive Critic ↔ Negative Critic → Synthesis · powered by LM Studio
         </span>
       </header>
 
@@ -321,20 +341,29 @@ export default function App() {
           {/* Step control buttons */}
           {currentStep > 0 && currentStep < 3 && (
             <div className="p-4 flex-shrink-0 bg-slate-800 border-b border-slate-700">
-              <div className="flex gap-3 items-center">
+              <div className="flex gap-3 items-center flex-wrap">
                 {currentStep === 1 && (
                   <>
                     <button
-                      onClick={handleCritique}
+                      onClick={() => handleCritique('positive')}
                       disabled={isProcessing}
-                      className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500
+                      className="px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600
                                  disabled:opacity-40 disabled:cursor-not-allowed transition-colors
                                  text-sm font-medium"
                     >
-                      {isProcessing ? '⏳ Processing...' : '🔍 Review Code'}
+                      {isProcessing ? '⏳ Processing...' : '👍 Positive Review'}
+                    </button>
+                    <button
+                      onClick={() => handleCritique('negative')}
+                      disabled={isProcessing}
+                      className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600
+                                 disabled:opacity-40 disabled:cursor-not-allowed transition-colors
+                                 text-sm font-medium"
+                    >
+                      {isProcessing ? '⏳ Processing...' : '👎 Negative Review'}
                     </button>
                     <span className="text-xs text-slate-400">
-                      Click to have the critic review the generated code
+                      Choose a positive or negative critic to review the generated code
                     </span>
                   </>
                 )}
@@ -342,25 +371,34 @@ export default function App() {
                 {currentStep === 2 && (
                   <>
                     <button
-                      onClick={handleCritique}
+                      onClick={() => handleCritique('positive')}
                       disabled={isProcessing}
-                      className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500
+                      className="px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600
                                  disabled:opacity-40 disabled:cursor-not-allowed transition-colors
                                  text-sm font-medium"
                     >
-                      {isProcessing ? '⏳ Processing...' : '🔍 Review Again'}
+                      {isProcessing ? '⏳ Processing...' : '👍 Positive Review'}
+                    </button>
+                    <button
+                      onClick={() => handleCritique('negative')}
+                      disabled={isProcessing}
+                      className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600
+                                 disabled:opacity-40 disabled:cursor-not-allowed transition-colors
+                                 text-sm font-medium"
+                    >
+                      {isProcessing ? '⏳ Processing...' : '👎 Negative Review'}
                     </button>
                     <button
                       onClick={handleSynthesize}
                       disabled={isProcessing}
-                      className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500
+                      className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500
                                  disabled:opacity-40 disabled:cursor-not-allowed transition-colors
                                  text-sm font-medium"
                     >
                       {isProcessing ? '⏳ Processing...' : '✨ Apply Changes'}
                     </button>
                     <span className="text-xs text-slate-400">
-                      Review again for another critique, or apply changes
+                      Add more reviews or apply changes
                     </span>
                   </>
                 )}
@@ -376,6 +414,8 @@ export default function App() {
                   onClick={() => {
                     setFinalCode(draftCode);
                     setCriticComments('');
+                    setPositiveCriticComments('');
+                    setNegativeCriticComments('');
                     setCurrentStep(1);
                     setGeneratorMd('');
                     setCriticMd('');
@@ -414,6 +454,8 @@ export default function App() {
                     setUserPrompt('');
                     setDraftCode('');
                     setCriticComments('');
+                    setPositiveCriticComments('');
+                    setNegativeCriticComments('');
                     setFinalCode('');
                     setMessages([]);
                     setGeneratorMd('');
