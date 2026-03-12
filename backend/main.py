@@ -218,6 +218,12 @@ class StepResponse(BaseModel):
     reasoning: str | None = None  # Optional thinking/reasoning from model
 
 
+class GenerateResponse(BaseModel):
+    content: str
+    reasoning: str | None = None
+    generated_code: str
+
+
 class SynthesizeResponse(BaseModel):
     content: str
     reasoning: str | None = None
@@ -264,11 +270,11 @@ async def status() -> dict:
         return {"lm_studio": "offline", "error": str(exc)}
 
 
-@app.post("/generate", response_model=StepResponse)
-async def generate(request: GenerateRequest) -> StepResponse:
+@app.post("/generate", response_model=GenerateResponse)
+async def generate(request: GenerateRequest) -> GenerateResponse:
     """
     Step 1: Generate initial code from user prompt.
-    Returns the generated code and optional reasoning/thinking from the model.
+    Returns the full response content, optional reasoning, and extracted code for the code canvas.
     """
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt must not be empty.")
@@ -278,7 +284,7 @@ async def generate(request: GenerateRequest) -> StepResponse:
             request.lm_studio_url, request.model
         )
         result = generate_code(req_client, req_model, request.prompt)
-        return StepResponse(**result)
+        return GenerateResponse(**result)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
