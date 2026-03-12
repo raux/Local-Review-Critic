@@ -32,7 +32,7 @@ NEGATIVE_CRITIC_SYSTEM = (
     "Use only natural language. Do not include code snippets, code blocks, or inline code."
 )
 
-# Keep backward-compatible alias
+# Backward-compatible alias (deprecated: prefer POSITIVE/NEGATIVE_CRITIC_SYSTEM)
 CRITIC_SYSTEM = NEGATIVE_CRITIC_SYSTEM
 
 AGENT_MD_SYSTEM = (

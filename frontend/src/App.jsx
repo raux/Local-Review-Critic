@@ -143,7 +143,9 @@ export default function App() {
       } else {
         setNegativeCriticComments(data.content);
       }
-      // Build combined critic comments for synthesis
+      // Build combined critic comments for synthesis.
+      // Use data.content for the current critic type (fresh value) and
+      // existing state for the other type (unchanged, already up-to-date).
       const newPositive = criticType === 'positive' ? data.content : positiveCriticComments;
       const newNegative = criticType === 'negative' ? data.content : negativeCriticComments;
       const combined = [

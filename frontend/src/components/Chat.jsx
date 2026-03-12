@@ -26,7 +26,7 @@ function stripCodeBlocks(text) {
   result = result.replace(/`[^`]+`/g, '').trim();
   // Collapse multiple blank lines into one
   result = result.replace(/\n{3,}/g, '\n\n');
-  return result || text;
+  return result || '(see code viewer →)';
 }
 
 function ChatBubble({ role, content }) {
