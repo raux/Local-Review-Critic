@@ -10,6 +10,7 @@ export default defineConfig({
       '/generate': 'http://localhost:8000',
       '/critique': 'http://localhost:8000',
       '/synthesize': 'http://localhost:8000',
+      '/generate-agent-md': 'http://localhost:8000',
       '/health': 'http://localhost:8000',
       '/status': 'http://localhost:8000',
     },

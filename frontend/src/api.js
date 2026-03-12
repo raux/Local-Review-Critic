@@ -82,6 +82,26 @@ export async function synthesizeCode(prompt, draftCode, criticComments, lmStudio
 }
 
 /**
+ * Generate AGENT.MD documents for both the Generator and Critic agents.
+ *
+ * @param {string}      generatorOutput – sample output from the generator agent
+ * @param {string}      criticOutput    – sample output from the critic agent
+ * @param {string|null} lmStudioUrl     – optional base URL override
+ * @param {string|null} model           – optional model ID override
+ * @returns {Promise<{generator_md: string, critic_md: string}>}
+ */
+export async function generateAgentMd(generatorOutput, criticOutput, lmStudioUrl = null, model = null) {
+  const payload = {
+    generator_output: generatorOutput,
+    critic_output: criticOutput,
+  };
+  if (lmStudioUrl) payload.lm_studio_url = lmStudioUrl;
+  if (model)       payload.model         = model;
+  const { data } = await api.post('/generate-agent-md', payload);
+  return data;
+}
+
+/**
  * Check whether the FastAPI backend itself is alive.
  */
 export async function checkBackendHealth() {

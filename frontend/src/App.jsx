@@ -10,7 +10,8 @@ import Chat          from './components/Chat.jsx';
 import CodeViewer    from './components/CodeViewer.jsx';
 import LoadingStates from './components/LoadingStates.jsx';
 import LmStudioConfig from './components/LmStudioConfig.jsx';
-import { generateCode, critiqueCode, synthesizeCode } from './api.js';
+import AgentMdViewer from './components/AgentMdViewer.jsx';
+import { generateCode, critiqueCode, synthesizeCode, generateAgentMd } from './api.js';
 import { Send } from 'lucide-react';
 
 // Pipeline phase sequence used by LoadingStates
@@ -30,6 +31,12 @@ export default function App() {
   const [draftCode, setDraftCode]           = useState('');
   const [criticComments, setCriticComments] = useState('');
   const [isProcessing, setIsProcessing]     = useState(false);
+
+  // AGENT.MD generation state
+  const [generatorMd, setGeneratorMd]       = useState('');
+  const [criticMd, setCriticMd]             = useState('');
+  const [showAgentMd, setShowAgentMd]       = useState(false);
+  const [isGeneratingMd, setIsGeneratingMd] = useState(false);
 
   // Ref so we can simulate phase progression during the (blocking) pipeline call
   const phaseTimer = useRef(null);
@@ -204,6 +211,43 @@ export default function App() {
     }
   };
 
+  const handleGenerateAgentMd = async () => {
+    if (!draftCode || !criticComments || isGeneratingMd) return;
+
+    setIsGeneratingMd(true);
+    setError('');
+
+    try {
+      const data = await generateAgentMd(
+        draftCode,
+        criticComments,
+        lmConfig.lmStudioUrl || null,
+        lmConfig.model        || null,
+      );
+
+      setGeneratorMd(data.generator_md);
+      setCriticMd(data.critic_md);
+      setShowAgentMd(true);
+    } catch (err) {
+      const detail =
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Unknown error';
+
+      const isOffline = detail.toLowerCase().includes('offline') ||
+                        detail.toLowerCase().includes('reachable') ||
+                        err?.response?.status === 503;
+
+      const displayMsg = isOffline
+        ? '⚠️ Local Server Offline – make sure LM Studio is running and a model is loaded.'
+        : `❌ Error generating AGENT.MD: ${detail}`;
+
+      setError(displayMsg);
+    } finally {
+      setIsGeneratingMd(false);
+    }
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -317,8 +361,29 @@ export default function App() {
 
           {currentStep === 3 && (
             <div className="p-4 flex-shrink-0 bg-slate-800 border-b border-slate-700">
-              <div className="flex gap-3 items-center">
+              <div className="flex gap-3 items-center flex-wrap">
                 <span className="text-sm text-green-400 font-medium">✓ Pipeline Complete</span>
+                <button
+                  onClick={handleGenerateAgentMd}
+                  disabled={isGeneratingMd || isProcessing}
+                  className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500
+                             disabled:opacity-40 disabled:cursor-not-allowed transition-colors
+                             text-sm font-medium"
+                >
+                  {isGeneratingMd ? '⏳ Generating…' : '📄 Generate AGENT.MD'}
+                </button>
+                {generatorMd && criticMd && (
+                  <button
+                    onClick={() => setShowAgentMd(prev => !prev)}
+                    className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                      showAgentMd
+                        ? 'bg-slate-600 hover:bg-slate-500'
+                        : 'bg-indigo-600 hover:bg-indigo-500'
+                    }`}
+                  >
+                    {showAgentMd ? '🖥️ Show Code' : '📄 Show AGENT.MD'}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setCurrentStep(0);
@@ -327,6 +392,9 @@ export default function App() {
                     setCriticComments('');
                     setFinalCode('');
                     setMessages([]);
+                    setGeneratorMd('');
+                    setCriticMd('');
+                    setShowAgentMd(false);
                   }}
                   className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500
                              transition-colors text-sm font-medium"
@@ -338,7 +406,15 @@ export default function App() {
           )}
 
           <div className="flex-1 overflow-hidden">
-            <CodeViewer code={finalCode} language="python" />
+            {showAgentMd && generatorMd && criticMd ? (
+              <AgentMdViewer
+                generatorMd={generatorMd}
+                criticMd={criticMd}
+                onClose={() => setShowAgentMd(false)}
+              />
+            ) : (
+              <CodeViewer code={finalCode} language="python" />
+            )}
           </div>
         </div>
 

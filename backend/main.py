@@ -15,7 +15,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from pydantic import BaseModel
 
-from agents import run_pipeline, generate_code, critique_code, synthesize_code
+from agents import (
+    run_pipeline, generate_code, critique_code, synthesize_code,
+    generate_agent_md, GENERATOR_SYSTEM, CRITIC_SYSTEM,
+)
 
 load_dotenv()
 
@@ -225,6 +228,18 @@ class ChatResponse(BaseModel):
     final_code: str
 
 
+class AgentMdRequest(BaseModel):
+    generator_output: str
+    critic_output: str
+    lm_studio_url: str | None = None
+    model: str | None = None
+
+
+class AgentMdResponse(BaseModel):
+    generator_md: str
+    critic_md: str
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -325,6 +340,41 @@ async def synthesize(request: SynthesizeRequest) -> SynthesizeResponse:
         raise HTTPException(
             status_code=500,
             detail=f"Synthesize error: {exc}",
+        ) from exc
+
+
+@app.post("/generate-agent-md", response_model=AgentMdResponse)
+async def generate_agent_md_endpoint(request: AgentMdRequest) -> AgentMdResponse:
+    """
+    Generate AGENT.MD documents for both the Generator and Critic agents.
+    Returns markdown descriptions based on each agent's system prompt and sample output.
+    """
+    if not request.generator_output.strip():
+        raise HTTPException(status_code=400, detail="Generator output must not be empty.")
+    if not request.critic_output.strip():
+        raise HTTPException(status_code=400, detail="Critic output must not be empty.")
+
+    try:
+        req_client, req_model = await _resolve_client_and_model(
+            request.lm_studio_url, request.model
+        )
+        gen_md = generate_agent_md(
+            req_client, req_model, "Generator", GENERATOR_SYSTEM, request.generator_output
+        )
+        critic_md = generate_agent_md(
+            req_client, req_model, "Critic", CRITIC_SYSTEM, request.critic_output
+        )
+        return AgentMdResponse(
+            generator_md=gen_md["content"],
+            critic_md=critic_md["content"],
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("AGENT.MD generation error: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"AGENT.MD generation error: {exc}",
         ) from exc
 
 
