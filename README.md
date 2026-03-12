@@ -11,7 +11,9 @@ Local-Review-Critic is a full-stack web application that combines local language
 
 - **Multi-Agent Workflow**: Three specialized agents work together to produce high-quality code
   - 🤖 **Generator Agent**: Creates initial code based on your requirements
-  - 🔍 **Critic Agent**: Reviews code for bugs, efficiency, and security issues
+  - 🔍 **Critic Agents**: Two complementary review perspectives
+    - ✨ **Optimistic Coding**: Reviews strengths, good patterns, and best practices
+    - 🛡️ **Pessimistic/Defensive Coding**: Reviews potential issues, edge cases, and security concerns
   - ✨ **Synthesis Agent**: Refines code incorporating all feedback
 
 - **Button-Controlled Execution**: Step through the pipeline at your own pace
@@ -43,7 +45,9 @@ User Prompt
 └──────────┬──────────┘
            ↓
 ┌─────────────────────┐
-│   Critic Agent      │ ← Reviews for bugs, efficiency, security
+│   Critic Agents     │ ← Dual perspectives:
+│                     │   • Optimistic (strengths, patterns)
+│                     │   • Pessimistic (issues, defensive)
 └──────────┬──────────┘
            ↓
 ┌─────────────────────┐
@@ -146,8 +150,10 @@ The application will be available at `http://localhost:5173`
    - Review the generated code in the right panel
 
 3. **Review Code** (Button-Controlled):
-   - Click the "🔍 Review Code" button when ready
-   - The Critic will analyze the code for issues
+   - Choose between two review perspectives:
+     - **✨ Optimistic Review**: Highlights strengths and good practices
+     - **🛡️ Pessimistic/Defensive Review**: Identifies issues, edge cases, and security concerns
+   - You can request both reviews or just one
    - Review the feedback in the chat
 
 4. **Apply Changes** (Button-Controlled):
@@ -216,7 +222,8 @@ Execute the multi-agent code generation pipeline.
   "code": "def fibonacci(n):\n    ...",
   "messages": [
     {"role": "generator", "content": "..."},
-    {"role": "critic", "content": "..."},
+    {"role": "optimistic_critic", "content": "..."},
+    {"role": "pessimistic_critic", "content": "..."},
     {"role": "synthesis", "content": "..."}
   ]
 }

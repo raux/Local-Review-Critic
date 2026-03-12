@@ -17,22 +17,24 @@ GENERATOR_SYSTEM = (
     "You may include brief natural language explanations outside the code blocks."
 )
 
-POSITIVE_CRITIC_SYSTEM = (
-    "You are an encouraging senior code reviewer who focuses on strengths. "
-    "Analyze the provided work and highlight what was done well: "
+OPTIMISTIC_CRITIC_SYSTEM = (
+    "You are an Optimistic Coding reviewer who focuses on what works well. "
+    "Analyze the provided work and highlight strengths: "
     "good design decisions, correct use of patterns, solid logic, and best practices followed. "
     "Use only natural language. Do not include code snippets, code blocks, or inline code."
 )
 
-NEGATIVE_CRITIC_SYSTEM = (
-    "You are a rigorous senior code reviewer who focuses on finding issues. "
-    "Analyze the provided work for potential bugs, inefficiencies, security concerns, "
-    "and areas that need improvement. Suggest specific improvements. "
+PESSIMISTIC_CRITIC_SYSTEM = (
+    "You are a Pessimistic Coding (Defensive Programming) reviewer who focuses on finding issues. "
+    "Analyze the provided work for potential bugs, edge cases, security concerns, "
+    "defensive programming practices, and areas that need improvement. Suggest specific improvements. "
     "Use only natural language. Do not include code snippets, code blocks, or inline code."
 )
 
-# Backward-compatible alias (deprecated: prefer POSITIVE/NEGATIVE_CRITIC_SYSTEM)
-CRITIC_SYSTEM = NEGATIVE_CRITIC_SYSTEM
+# Backward-compatible aliases (deprecated: prefer OPTIMISTIC/PESSIMISTIC_CRITIC_SYSTEM)
+POSITIVE_CRITIC_SYSTEM = OPTIMISTIC_CRITIC_SYSTEM
+NEGATIVE_CRITIC_SYSTEM = PESSIMISTIC_CRITIC_SYSTEM
+CRITIC_SYSTEM = PESSIMISTIC_CRITIC_SYSTEM
 
 AGENT_MD_SYSTEM = (
     "You are a technical documentation writer. "
@@ -110,32 +112,39 @@ def generate_code(client: OpenAI, model: str, user_prompt: str) -> dict:
     return result
 
 
-def critique_code(client: OpenAI, model: str, draft_code: str, critic_type: str = "negative") -> dict:
+def critique_code(client: OpenAI, model: str, draft_code: str, critic_type: str = "pessimistic") -> dict:
     """
     Step 2: Critic reviews the draft code.
 
     Args:
-        critic_type: "positive" for strengths-focused review,
-                     "negative" for issues-focused review.
+        critic_type: "optimistic" for strengths-focused review (Optimistic Coding),
+                     "pessimistic" for issues-focused review (Pessimistic/Defensive Coding).
+                     Also accepts legacy values: "positive" → "optimistic", "negative" → "pessimistic"
 
     Returns a dict with:
       - content: the review/feedback
       - reasoning: optional thinking/reasoning from the model
     """
+    # Support backward compatibility with legacy positive/negative terms
     if critic_type == "positive":
-        system = POSITIVE_CRITIC_SYSTEM
-        label = "Positive Critic"
+        critic_type = "optimistic"
+    elif critic_type == "negative":
+        critic_type = "pessimistic"
+
+    if critic_type == "optimistic":
+        system = OPTIMISTIC_CRITIC_SYSTEM
+        label = "Optimistic Critic"
         critic_input = (
             "Please review the following work and highlight what was done well, "
             "including good design decisions and best practices:\n\n"
             f"{draft_code}"
         )
     else:
-        system = NEGATIVE_CRITIC_SYSTEM
-        label = "Negative Critic"
+        system = PESSIMISTIC_CRITIC_SYSTEM
+        label = "Pessimistic Critic"
         critic_input = (
             "Please review the following work and identify potential issues, "
-            "bugs, inefficiencies, and suggest specific improvements:\n\n"
+            "bugs, edge cases, defensive programming needs, and suggest specific improvements:\n\n"
             f"{draft_code}"
         )
 
@@ -197,7 +206,7 @@ def generate_agent_md(client: OpenAI, model: str, agent_name: str,
 
 def run_pipeline(client: OpenAI, model: str, user_prompt: str) -> dict:
     """
-    Execute the Generator → Positive Critic → Negative Critic → Synthesis pipeline.
+    Execute the Generator → Optimistic Critic → Pessimistic Critic → Synthesis pipeline.
     This function maintains backward compatibility with the existing /chat endpoint.
 
     Returns a dict with:
@@ -213,18 +222,18 @@ def run_pipeline(client: OpenAI, model: str, user_prompt: str) -> dict:
     chat_history.append({"role": "generator", "content": gen_result["content"]})
     draft_code = gen_result["generated_code"]
 
-    # Step 2a – Positive Critic reviews the draft
-    positive_result = critique_code(client, model, draft_code, critic_type="positive")
-    chat_history.append({"role": "positive_critic", "content": positive_result["content"]})
+    # Step 2a – Optimistic Critic reviews the draft
+    optimistic_result = critique_code(client, model, draft_code, critic_type="optimistic")
+    chat_history.append({"role": "optimistic_critic", "content": optimistic_result["content"]})
 
-    # Step 2b – Negative Critic reviews the draft
-    negative_result = critique_code(client, model, draft_code, critic_type="negative")
-    chat_history.append({"role": "negative_critic", "content": negative_result["content"]})
+    # Step 2b – Pessimistic Critic reviews the draft
+    pessimistic_result = critique_code(client, model, draft_code, critic_type="pessimistic")
+    chat_history.append({"role": "pessimistic_critic", "content": pessimistic_result["content"]})
 
     # Combine both critic feedbacks for synthesis
     combined_comments = (
-        f"Positive feedback:\n{positive_result['content']}\n\n"
-        f"Negative feedback:\n{negative_result['content']}"
+        f"Optimistic Coding feedback:\n{optimistic_result['content']}\n\n"
+        f"Pessimistic Coding (Defensive Programming) feedback:\n{pessimistic_result['content']}"
     )
 
     # Step 3 – Generator produces the final refined code
