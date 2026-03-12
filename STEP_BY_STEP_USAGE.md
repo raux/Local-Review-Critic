@@ -1,6 +1,6 @@
 # Step-by-Step Usage Guide
 
-This guide explains how to use the new button-controlled agent interaction feature.
+This guide explains how to use the button-controlled agent interaction feature with dual critic perspectives.
 
 ## New Features
 
@@ -9,7 +9,9 @@ This guide explains how to use the new button-controlled agent interaction featu
 The agent interaction has been broken down into three separate steps, each controlled by a button click:
 
 1. **Generate** - Creates initial code from your prompt
-2. **Review Code** - Critic reviews the generated code
+2. **Review Code** - Choose between two critic perspectives:
+   - **Optimistic Coding**: Highlights strengths and good practices
+   - **Pessimistic/Defensive Coding**: Identifies issues, edge cases, and security concerns
 3. **Apply Changes** - Synthesizes final code incorporating feedback
 
 ### 2. Thinking Model Support
@@ -33,12 +35,16 @@ If you're using a reasoning/thinking model (like OpenAI's o1 models), the model'
 ### Step 2: Review the Code
 
 1. Review the generated code in the right panel
-2. Click the "🔍 Review Code" button when ready
+2. Choose your review perspective:
+   - Click **"✨ Optimistic Review"** to see what works well
+   - Click **"🛡️ Pessimistic/Defensive Review"** to identify potential issues
+   - You can request both reviews if desired
 
 **What happens:**
 - Loading indicator shows "Critic is reviewing..."
-- Critic's feedback appears in the chat
+- Selected critic's feedback appears in the chat
 - An "✨ Apply Changes" button appears
+- You can continue requesting more reviews before synthesis
 
 ### Step 3: Apply Improvements
 
@@ -88,6 +94,7 @@ Critique the draft code.
 ```json
 {
   "draft_code": "def fibonacci(n):\n    ...",
+  "critic_type": "optimistic",  // "optimistic" or "pessimistic" (also accepts legacy "positive"/"negative")
   "lm_studio_url": "http://localhost:1234",  // Optional
   "model": "model-name"                       // Optional
 }
@@ -96,7 +103,7 @@ Critique the draft code.
 **Response:**
 ```json
 {
-  "content": "The code has the following issues...",
+  "content": "The code demonstrates excellent...",  // or "The code has the following issues..."
   "reasoning": "Let me analyze..."           // Optional, from thinking models
 }
 ```
@@ -143,10 +150,11 @@ Run the complete pipeline in one request (original behavior).
 {
   "chat_history": [
     {"role": "generator", "content": "..."},
-    {"role": "critic", "content": "..."},
+    {"role": "optimistic_critic", "content": "..."},
+    {"role": "pessimistic_critic", "content": "..."},
     {"role": "generator", "content": "..."}
   ],
-  "critic_comments": "The code has the following issues...",
+  "critic_comments": "Optimistic Coding feedback:\n...\n\nPessimistic Coding (Defensive Programming) feedback:\n...",
   "final_code": "def fibonacci(n):\n    ..."
 }
 ```
@@ -178,8 +186,10 @@ Run the complete pipeline in one request (original behavior).
    - Enter a prompt like "Create a Python function to sort a list"
    - Click Send
    - Wait for generation to complete
-   - Click "🔍 Review Code"
-   - Wait for critique to complete
+   - Click "✨ Optimistic Review" to see strengths
+   - Wait for review to complete
+   - Click "🛡️ Pessimistic/Defensive Review" to see potential issues
+   - Wait for review to complete
    - Click "✨ Apply Changes"
    - Wait for synthesis to complete
    - Verify the final code is displayed
@@ -196,10 +206,15 @@ curl -X POST http://localhost:8000/generate \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Create a Python hello world function"}'
 
-# Test critique endpoint
+# Test critique endpoint (optimistic)
 curl -X POST http://localhost:8000/critique \
   -H "Content-Type: application/json" \
-  -d '{"draft_code": "def hello():\n    print(\"Hello, World!\")"}'
+  -d '{"draft_code": "def hello():\n    print(\"Hello, World!\")", "critic_type": "optimistic"}'
+
+# Test critique endpoint (pessimistic)
+curl -X POST http://localhost:8000/critique \
+  -H "Content-Type: application/json" \
+  -d '{"draft_code": "def hello():\n    print(\"Hello, World!\")", "critic_type": "pessimistic"}'
 
 # Test synthesize endpoint
 curl -X POST http://localhost:8000/synthesize \
@@ -207,7 +222,7 @@ curl -X POST http://localhost:8000/synthesize \
   -d '{
     "prompt": "Create a Python hello world function",
     "draft_code": "def hello():\n    print(\"Hello, World!\")",
-    "critic_comments": "Add a docstring and parameter for name"
+    "critic_comments": "Optimistic: Good structure.\n\nPessimistic: Add error handling and type hints."
   }'
 ```
 
@@ -221,13 +236,13 @@ If you're using a reasoning model that provides thinking/reasoning output (like 
 
 This allows you to see the model's internal reasoning process, which can be helpful for understanding how it arrived at its conclusions.
 
-## Benefits of Step-by-Step Control
+## Benefits of Dual-Perspective Reviews
 
-1. **Review Before Proceeding** - Examine each stage's output before moving to the next
-2. **Stop Early** - Skip critique or synthesis if the initial generation is sufficient
-3. **Understand the Process** - See how each agent contributes to the final result
-4. **Transparency** - View thinking model reasoning at each step
-5. **User Control** - Proceed at your own pace through the pipeline
+1. **Comprehensive Feedback** - Get both positive reinforcement and critical analysis
+2. **Balanced Perspective** - Understand both strengths and weaknesses
+3. **Flexible Workflow** - Choose one or both critics based on your needs
+4. **User Control** - Proceed at your own pace through the pipeline
+5. **Educational Value** - Learn from both what works and what needs improvement
 
 ## Backward Compatibility
 
