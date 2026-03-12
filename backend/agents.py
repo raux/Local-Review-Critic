@@ -22,6 +22,14 @@ CRITIC_SYSTEM = (
     "Suggest specific improvements."
 )
 
+AGENT_MD_SYSTEM = (
+    "You are a technical documentation writer. "
+    "Generate a concise AGENT.MD markdown document that describes the given AI agent. "
+    "Include the following sections: # Agent Name, ## Role, ## System Prompt, "
+    "## Capabilities, ## Behavior Patterns, ## Constraints. "
+    "Base your analysis on the agent's system prompt and its sample output."
+)
+
 
 def _chat(client: OpenAI, model: str, system: str, user: str) -> str:
     """Send a single-turn chat request and return the assistant text."""
@@ -126,6 +134,29 @@ def synthesize_code(client: OpenAI, model: str, user_prompt: str, draft: str, cr
     result["final_code"] = extract_code(result["content"])
     logger.info("Final code extracted (length: %d chars)", len(result["final_code"]))
 
+    return result
+
+
+def generate_agent_md(client: OpenAI, model: str, agent_name: str,
+                      system_prompt: str, sample_output: str) -> dict:
+    """
+    Generate an AGENT.MD markdown document describing the given agent.
+
+    Returns a dict with:
+      - content: the generated AGENT.MD markdown
+      - reasoning: optional thinking/reasoning from the model
+    """
+    logger.info("Generating AGENT.MD for agent: %s", agent_name)
+    user_input = (
+        f"Generate an AGENT.MD document for the following AI agent:\n\n"
+        f"**Agent Name:** {agent_name}\n\n"
+        f"**System Prompt:** {system_prompt}\n\n"
+        f"**Sample Output:**\n{sample_output}\n\n"
+        f"Create a well-structured markdown document that fully describes "
+        f"this agent's role, capabilities, and behavior."
+    )
+    result = _chat_with_reasoning(client, model, AGENT_MD_SYSTEM, user_input)
+    logger.info("AGENT.MD for %s generated (length: %d chars)", agent_name, len(result["content"]))
     return result
 
 
