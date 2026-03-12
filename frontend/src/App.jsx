@@ -10,7 +10,6 @@ import Chat          from './components/Chat.jsx';
 import CodeViewer    from './components/CodeViewer.jsx';
 import LoadingStates from './components/LoadingStates.jsx';
 import LmStudioConfig from './components/LmStudioConfig.jsx';
-import AgentMdViewer from './components/AgentMdViewer.jsx';
 import { generateCode, critiqueCode, synthesizeCode, generateAgentMd } from './api.js';
 import { Send } from 'lucide-react';
 
@@ -35,9 +34,8 @@ export default function App() {
   const [isProcessing, setIsProcessing]             = useState(false);
 
   // AGENT.MD generation state
-  const [generatorMd, setGeneratorMd]       = useState('');
-  const [criticMd, setCriticMd]             = useState('');
-  const [showAgentMd, setShowAgentMd]       = useState(false);
+  const [analysisMd, setAnalysisMd]         = useState('');
+  const [showAnalysis, setShowAnalysis]     = useState(false);
   const [isGeneratingMd, setIsGeneratingMd] = useState(false);
 
   // Ref so we can simulate phase progression during the (blocking) pipeline call
@@ -232,7 +230,7 @@ export default function App() {
   };
 
   const handleGenerateAgentMd = async () => {
-    if (!draftCode || !criticComments || isGeneratingMd) return;
+    if (!draftCode || !finalCode || isGeneratingMd) return;
 
     setIsGeneratingMd(true);
     setError('');
@@ -240,14 +238,13 @@ export default function App() {
     try {
       const data = await generateAgentMd(
         draftCode,
-        criticComments,
+        finalCode,
         lmConfig.lmStudioUrl || null,
         lmConfig.model        || null,
       );
 
-      setGeneratorMd(data.generator_md);
-      setCriticMd(data.critic_md);
-      setShowAgentMd(true);
+      setAnalysisMd(data.analysis_md);
+      setShowAnalysis(true);
     } catch (err) {
       const detail =
         err?.response?.data?.detail ||
@@ -260,7 +257,7 @@ export default function App() {
 
       const displayMsg = isOffline
         ? '⚠️ Local Server Offline – make sure LM Studio is running and a model is loaded.'
-        : `❌ Error generating AGENT.MD: ${detail}`;
+        : `❌ Error generating code analysis: ${detail}`;
 
       setError(displayMsg);
     } finally {
@@ -417,9 +414,8 @@ export default function App() {
                     setOptimisticCriticComments('');
                     setPessimisticCriticComments('');
                     setCurrentStep(1);
-                    setGeneratorMd('');
-                    setCriticMd('');
-                    setShowAgentMd(false);
+                    setAnalysisMd('');
+                    setShowAnalysis(false);
                     setMessages(prev => [...prev, { role: 'system', content: '↩️ Reverted to original draft code.' }]);
                   }}
                   className="px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500
@@ -434,18 +430,18 @@ export default function App() {
                              disabled:opacity-40 disabled:cursor-not-allowed transition-colors
                              text-sm font-medium"
                 >
-                  {isGeneratingMd ? '⏳ Generating…' : '📄 Generate AGENT.MD'}
+                  {isGeneratingMd ? '⏳ Generating…' : '📊 Analyze Code Changes'}
                 </button>
-                {generatorMd && criticMd && (
+                {analysisMd && (
                   <button
-                    onClick={() => setShowAgentMd(prev => !prev)}
+                    onClick={() => setShowAnalysis(prev => !prev)}
                     className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
-                      showAgentMd
+                      showAnalysis
                         ? 'bg-slate-600 hover:bg-slate-500'
                         : 'bg-indigo-600 hover:bg-indigo-500'
                     }`}
                   >
-                    {showAgentMd ? '🖥️ Show Code' : '📄 Show AGENT.MD'}
+                    {showAnalysis ? '🖥️ Show Code' : '📊 Show Analysis'}
                   </button>
                 )}
                 <button
@@ -458,9 +454,8 @@ export default function App() {
                     setPessimisticCriticComments('');
                     setFinalCode('');
                     setMessages([]);
-                    setGeneratorMd('');
-                    setCriticMd('');
-                    setShowAgentMd(false);
+                    setAnalysisMd('');
+                    setShowAnalysis(false);
                   }}
                   className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500
                              transition-colors text-sm font-medium"
@@ -472,12 +467,21 @@ export default function App() {
           )}
 
           <div className="flex-1 overflow-hidden">
-            {showAgentMd && generatorMd && criticMd ? (
-              <AgentMdViewer
-                generatorMd={generatorMd}
-                criticMd={criticMd}
-                onClose={() => setShowAgentMd(false)}
-              />
+            {showAnalysis && analysisMd ? (
+              <div className="flex flex-col h-full bg-slate-900">
+                <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 flex-shrink-0">
+                  <span className="text-sm font-semibold text-slate-200">📊 Code Evolution Analysis</span>
+                  <button
+                    onClick={() => setShowAnalysis(false)}
+                    className="px-3 py-1 rounded text-xs bg-slate-700 hover:bg-slate-600 transition-colors"
+                  >
+                    Show Code
+                  </button>
+                </div>
+                <div className="flex-1 overflow-auto p-4 text-sm leading-relaxed whitespace-pre-wrap font-mono">
+                  {analysisMd}
+                </div>
+              </div>
             ) : (
               <CodeViewer code={finalCode} language="python" />
             )}

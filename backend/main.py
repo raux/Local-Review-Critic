@@ -17,8 +17,7 @@ from pydantic import BaseModel
 
 from agents import (
     run_pipeline, generate_code, critique_code, synthesize_code,
-    generate_agent_md, GENERATOR_SYSTEM, OPTIMISTIC_CRITIC_SYSTEM,
-    PESSIMISTIC_CRITIC_SYSTEM,
+    generate_agent_md,
 )
 
 load_dotenv()
@@ -237,15 +236,14 @@ class ChatResponse(BaseModel):
 
 
 class AgentMdRequest(BaseModel):
-    generator_output: str
-    critic_output: str
+    initial_code: str
+    final_code: str
     lm_studio_url: str | None = None
     model: str | None = None
 
 
 class AgentMdResponse(BaseModel):
-    generator_md: str
-    critic_md: str
+    analysis_md: str
 
 
 # ---------------------------------------------------------------------------
@@ -365,38 +363,31 @@ async def synthesize(request: SynthesizeRequest) -> SynthesizeResponse:
 @app.post("/generate-agent-md", response_model=AgentMdResponse)
 async def generate_agent_md_endpoint(request: AgentMdRequest) -> AgentMdResponse:
     """
-    Generate AGENT.MD documents for both the Generator and Critic agents.
-    Returns markdown descriptions based on each agent's system prompt and sample output.
+    Generate a code diff analysis comparing initial draft code to final synthesized code.
+    Returns a markdown report highlighting changes, improvements, and quality enhancements.
     """
-    if not request.generator_output.strip():
-        raise HTTPException(status_code=400, detail="Generator output must not be empty.")
-    if not request.critic_output.strip():
-        raise HTTPException(status_code=400, detail="Critic output must not be empty.")
+    if not request.initial_code.strip():
+        raise HTTPException(status_code=400, detail="Initial code must not be empty.")
+    if not request.final_code.strip():
+        raise HTTPException(status_code=400, detail="Final code must not be empty.")
 
     try:
         req_client, req_model = await _resolve_client_and_model(
             request.lm_studio_url, request.model
         )
-        gen_md = generate_agent_md(
-            req_client, req_model, "Generator", GENERATOR_SYSTEM, request.generator_output
-        )
-        optimistic_critic_md = generate_agent_md(
-            req_client, req_model, "Optimistic Critic", OPTIMISTIC_CRITIC_SYSTEM, request.critic_output
-        )
-        pessimistic_critic_md = generate_agent_md(
-            req_client, req_model, "Pessimistic Critic", PESSIMISTIC_CRITIC_SYSTEM, request.critic_output
+        analysis = generate_agent_md(
+            req_client, req_model, request.initial_code, request.final_code
         )
         return AgentMdResponse(
-            generator_md=gen_md["content"],
-            critic_md=optimistic_critic_md["content"] + "\n\n---\n\n" + pessimistic_critic_md["content"],
+            analysis_md=analysis["content"]
         )
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
-        logger.exception("AGENT.MD generation error: %s", exc)
+        logger.exception("Code diff analysis generation error: %s", exc)
         raise HTTPException(
             status_code=500,
-            detail=f"AGENT.MD generation error: {exc}",
+            detail=f"Code diff analysis generation error: {exc}",
         ) from exc
 
 

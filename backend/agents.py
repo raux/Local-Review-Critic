@@ -37,11 +37,12 @@ NEGATIVE_CRITIC_SYSTEM = PESSIMISTIC_CRITIC_SYSTEM
 CRITIC_SYSTEM = PESSIMISTIC_CRITIC_SYSTEM
 
 AGENT_MD_SYSTEM = (
-    "You are a technical documentation writer. "
-    "Generate a concise AGENT.MD markdown document that describes the given AI agent. "
-    "Include the following sections: # Agent Name, ## Role, ## System Prompt, "
-    "## Capabilities, ## Behavior Patterns, ## Constraints. "
-    "Base your analysis on the agent's system prompt and its sample output."
+    "You are a code analysis expert. "
+    "Analyze the differences between an initial code draft and the final improved version. "
+    "Generate a detailed markdown report with the following sections: "
+    "# Code Evolution Analysis, ## Summary of Changes, ## Key Improvements, "
+    "## Specific Modifications, ## Quality Enhancements, ## Lessons Learned. "
+    "Focus on explaining what changed, why it matters, and the benefits of the improvements."
 )
 
 
@@ -181,26 +182,29 @@ def synthesize_code(client: OpenAI, model: str, user_prompt: str, draft: str, cr
     return result
 
 
-def generate_agent_md(client: OpenAI, model: str, agent_name: str,
-                      system_prompt: str, sample_output: str) -> dict:
+def generate_agent_md(client: OpenAI, model: str, initial_code: str, final_code: str) -> dict:
     """
-    Generate an AGENT.MD markdown document describing the given agent.
+    Generate a code diff analysis markdown document comparing initial and final code.
+
+    Args:
+        initial_code: The original draft code before critic review
+        final_code: The final synthesized code after incorporating feedback
 
     Returns a dict with:
-      - content: the generated AGENT.MD markdown
+      - content: the generated code analysis markdown
       - reasoning: optional thinking/reasoning from the model
     """
-    logger.info("Generating AGENT.MD for agent: %s", agent_name)
+    logger.info("Generating code diff analysis between initial and final code")
     user_input = (
-        f"Generate an AGENT.MD document for the following AI agent:\n\n"
-        f"**Agent Name:** {agent_name}\n\n"
-        f"**System Prompt:** {system_prompt}\n\n"
-        f"**Sample Output:**\n{sample_output}\n\n"
-        f"Create a well-structured markdown document that fully describes "
-        f"this agent's role, capabilities, and behavior."
+        f"Analyze the evolution from initial code to final improved code.\n\n"
+        f"**Initial Code (Draft):**\n```\n{initial_code}\n```\n\n"
+        f"**Final Code (After Review & Synthesis):**\n```\n{final_code}\n```\n\n"
+        f"Create a comprehensive markdown analysis that highlights what changed, "
+        f"explains the improvements, and identifies the key quality enhancements "
+        f"made during the review and synthesis process."
     )
     result = _chat_with_reasoning(client, model, AGENT_MD_SYSTEM, user_input)
-    logger.info("AGENT.MD for %s generated (length: %d chars)", agent_name, len(result["content"]))
+    logger.info("Code diff analysis generated (length: %d chars)", len(result["content"]))
     return result
 
 
