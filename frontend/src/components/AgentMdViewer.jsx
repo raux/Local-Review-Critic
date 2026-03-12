@@ -3,8 +3,69 @@
  * documents with unified diff highlighting.
  */
 import { useState } from 'react';
-import { diffLines } from 'diff';
 import { X } from 'lucide-react';
+
+/**
+ * Simple line-based diff using the LCS (Longest Common Subsequence) algorithm.
+ * Returns an array of { value, added, removed } objects compatible with the
+ * "diff" npm package's diffLines output.
+ */
+function diffLines(oldStr, newStr) {
+  const oldLines = oldStr.split('\n');
+  const newLines = newStr.split('\n');
+
+  const m = oldLines.length;
+  const n = newLines.length;
+
+  // Build LCS table
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] =
+        oldLines[i - 1] === newLines[j - 1]
+          ? dp[i - 1][j - 1] + 1
+          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  // Back-track to produce diff parts
+  const parts = [];
+  let i = m;
+  let j = n;
+  const stack = []; // collect in reverse then flip
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+      stack.push({ type: 'common', line: oldLines[i - 1] });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      stack.push({ type: 'added', line: newLines[j - 1] });
+      j--;
+    } else {
+      stack.push({ type: 'removed', line: oldLines[i - 1] });
+      i--;
+    }
+  }
+  stack.reverse();
+
+  // Merge consecutive entries of the same type into single parts
+  for (const entry of stack) {
+    const last = parts[parts.length - 1];
+    if (last && last._type === entry.type) {
+      last.value += entry.line + '\n';
+    } else {
+      parts.push({
+        value: entry.line + '\n',
+        added: entry.type === 'added',
+        removed: entry.type === 'removed',
+        _type: entry.type,
+      });
+    }
+  }
+
+  // Strip internal _type helper
+  return parts.map(({ value, added, removed }) => ({ value, added, removed }));
+}
 
 const TABS = ['side-by-side', 'diff'];
 
