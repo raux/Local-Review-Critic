@@ -83,18 +83,18 @@ export async function synthesizeCode(prompt, draftCode, criticComments, lmStudio
 }
 
 /**
- * Generate AGENT.MD documents for both the Generator and Critic agents.
+ * Generate a code diff analysis comparing initial and final code.
  *
- * @param {string}      generatorOutput – sample output from the generator agent
- * @param {string}      criticOutput    – sample output from the critic agent
- * @param {string|null} lmStudioUrl     – optional base URL override
- * @param {string|null} model           – optional model ID override
- * @returns {Promise<{generator_md: string, critic_md: string}>}
+ * @param {string}      initialCode  – the original draft code
+ * @param {string}      finalCode    – the final synthesized code
+ * @param {string|null} lmStudioUrl  – optional base URL override
+ * @param {string|null} model        – optional model ID override
+ * @returns {Promise<{analysis_md: string}>}
  */
-export async function generateAgentMd(generatorOutput, criticOutput, lmStudioUrl = null, model = null) {
+export async function generateAgentMd(initialCode, finalCode, lmStudioUrl = null, model = null) {
   const payload = {
-    generator_output: generatorOutput,
-    critic_output: criticOutput,
+    initial_code: initialCode,
+    final_code: finalCode,
   };
   if (lmStudioUrl) payload.lm_studio_url = lmStudioUrl;
   if (model)       payload.model         = model;
