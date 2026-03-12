@@ -49,22 +49,21 @@ function diffLines(oldStr, newStr) {
   stack.reverse();
 
   // Merge consecutive entries of the same type into single parts
+  let lastType = null;
   for (const entry of stack) {
-    const last = parts[parts.length - 1];
-    if (last && last._type === entry.type) {
-      last.value += entry.line + '\n';
+    if (lastType === entry.type) {
+      parts[parts.length - 1].value += entry.line + '\n';
     } else {
       parts.push({
         value: entry.line + '\n',
         added: entry.type === 'added',
         removed: entry.type === 'removed',
-        _type: entry.type,
       });
+      lastType = entry.type;
     }
   }
 
-  // Strip internal _type helper
-  return parts.map(({ value, added, removed }) => ({ value, added, removed }));
+  return parts;
 }
 
 const TABS = ['side-by-side', 'diff'];
