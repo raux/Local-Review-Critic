@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from pydantic import BaseModel
 
-from agents import run_pipeline
+from agents import run_pipeline, generate_code, critique_code, synthesize_code
 
 load_dotenv()
 
@@ -125,6 +125,54 @@ def get_model() -> str:
     return _resolved_model
 
 
+async def _resolve_client_and_model(lm_studio_url: str | None, model: str | None) -> tuple[OpenAI, str]:
+    """
+    Helper function to resolve the OpenAI client and model for a request.
+    Validates the LM Studio URL, checks connectivity, and returns the client and model.
+    """
+    # Resolve the effective LM Studio base URL and model for this request.
+    # Frontend-supplied values take priority over server defaults.
+    # Validate user-supplied URL to prevent SSRF (must be loopback only)
+    if lm_studio_url:
+        _validate_lm_studio_url(lm_studio_url)
+        parsed = urllib.parse.urlparse(lm_studio_url)
+        port = int(parsed.port) if parsed.port else 1234  # integer – not user-controlled string
+        effective_url = f"http://localhost:{port}/v1"
+    else:
+        effective_url = LM_STUDIO_BASE_URL.rstrip("/")
+        if not effective_url.endswith("/v1"):
+            effective_url = effective_url + "/v1"
+
+    # Verify LM Studio is reachable before committing to a call
+    health_url = effective_url + "/models"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as http:
+            resp = await http.get(
+                health_url,
+                headers={"Authorization": "Bearer lm-studio"},
+            )
+            resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=503,
+            detail=f"Local Server Offline: LM Studio is not reachable. ({exc})",
+        ) from exc
+
+    # Build a per-request client if the URL differs from the global default
+    if effective_url != LM_STUDIO_BASE_URL.rstrip("/"):
+        req_client = OpenAI(base_url=effective_url, api_key="lm-studio")
+    else:
+        req_client = get_client()
+
+    # Resolve model: prefer request-supplied > env/auto-selected
+    if model:
+        req_model = model
+    else:
+        req_model = get_model()
+
+    return req_client, req_model
+
+
 # ---------------------------------------------------------------------------
 # Request / Response schemas
 # ---------------------------------------------------------------------------
@@ -134,9 +182,41 @@ class ChatRequest(BaseModel):
     model: str | None = None          # overrides auto-selected model when provided
 
 
+class GenerateRequest(BaseModel):
+    prompt: str
+    lm_studio_url: str | None = None
+    model: str | None = None
+
+
+class CritiqueRequest(BaseModel):
+    draft_code: str
+    lm_studio_url: str | None = None
+    model: str | None = None
+
+
+class SynthesizeRequest(BaseModel):
+    prompt: str
+    draft_code: str
+    critic_comments: str
+    lm_studio_url: str | None = None
+    model: str | None = None
+
+
 class ChatMessage(BaseModel):
     role: str
     content: str
+    reasoning: str | None = None  # Optional thinking/reasoning from model
+
+
+class StepResponse(BaseModel):
+    content: str
+    reasoning: str | None = None  # Optional thinking/reasoning from model
+
+
+class SynthesizeResponse(BaseModel):
+    content: str
+    reasoning: str | None = None
+    final_code: str
 
 
 class ChatResponse(BaseModel):
@@ -167,60 +247,101 @@ async def status() -> dict:
         return {"lm_studio": "offline", "error": str(exc)}
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+@app.post("/generate", response_model=StepResponse)
+async def generate(request: GenerateRequest) -> StepResponse:
     """
-    Run the Generator → Critic → Synthesis pipeline and return the results.
-    Optionally accepts lm_studio_url and model from the frontend (e.g. from
-    the LM Studio Config panel) to override the server defaults.
+    Step 1: Generate initial code from user prompt.
+    Returns the generated code and optional reasoning/thinking from the model.
     """
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt must not be empty.")
 
-    # Resolve the effective LM Studio base URL and model for this request.
-    # Frontend-supplied values (from the LmStudioConfig panel) take priority.
-    # Validate user-supplied URL to prevent SSRF (must be loopback only), then
-    # reconstruct from the integer port so no user-controlled string flows into
-    # the outgoing HTTP request.
-    if request.lm_studio_url:
-        _validate_lm_studio_url(request.lm_studio_url)
-        parsed = urllib.parse.urlparse(request.lm_studio_url)
-        port = int(parsed.port) if parsed.port else 1234  # integer – not user-controlled string
-        effective_url = f"http://localhost:{port}/v1"
-    else:
-        effective_url = LM_STUDIO_BASE_URL.rstrip("/")
-        if not effective_url.endswith("/v1"):
-            effective_url = effective_url + "/v1"
-
-    # Verify LM Studio is reachable before committing to a long pipeline call
-    health_url = effective_url + "/models"
     try:
-        async with httpx.AsyncClient(timeout=5.0) as http:
-            resp = await http.get(
-                health_url,
-                headers={"Authorization": "Bearer lm-studio"},
-            )
-            resp.raise_for_status()
+        req_client, req_model = await _resolve_client_and_model(
+            request.lm_studio_url, request.model
+        )
+        result = generate_code(req_client, req_model, request.prompt)
+        return StepResponse(**result)
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Generate error: %s", exc)
         raise HTTPException(
-            status_code=503,
-            detail=f"Local Server Offline: LM Studio is not reachable. ({exc})",
+            status_code=500,
+            detail=f"Generate error: {exc}",
         ) from exc
 
+
+@app.post("/critique", response_model=StepResponse)
+async def critique(request: CritiqueRequest) -> StepResponse:
+    """
+    Step 2: Critique the draft code.
+    Returns the review/feedback and optional reasoning/thinking from the model.
+    """
+    if not request.draft_code.strip():
+        raise HTTPException(status_code=400, detail="Draft code must not be empty.")
+
     try:
-        # Build a per-request client if the URL differs from the global default
-        if effective_url != LM_STUDIO_BASE_URL.rstrip("/"):
-            req_client = OpenAI(base_url=effective_url, api_key="lm-studio")
-        else:
-            req_client = get_client()
+        req_client, req_model = await _resolve_client_and_model(
+            request.lm_studio_url, request.model
+        )
+        result = critique_code(req_client, req_model, request.draft_code)
+        return StepResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Critique error: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Critique error: {exc}",
+        ) from exc
 
-        # Resolve model: prefer request-supplied > env/auto-selected
-        if request.model:
-            req_model = request.model
-        else:
-            # Use module-level auto-selected model (or resolve it now)
-            req_model = get_model()
 
+@app.post("/synthesize", response_model=SynthesizeResponse)
+async def synthesize(request: SynthesizeRequest) -> SynthesizeResponse:
+    """
+    Step 3: Synthesize final code incorporating critic feedback.
+    Returns the final code, reasoning, and extracted code without markdown fences.
+    """
+    if not request.prompt.strip():
+        raise HTTPException(status_code=400, detail="Prompt must not be empty.")
+    if not request.draft_code.strip():
+        raise HTTPException(status_code=400, detail="Draft code must not be empty.")
+    if not request.critic_comments.strip():
+        raise HTTPException(status_code=400, detail="Critic comments must not be empty.")
+
+    try:
+        req_client, req_model = await _resolve_client_and_model(
+            request.lm_studio_url, request.model
+        )
+        result = synthesize_code(
+            req_client, req_model, request.prompt, request.draft_code, request.critic_comments
+        )
+        return SynthesizeResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Synthesize error: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Synthesize error: {exc}",
+        ) from exc
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest) -> ChatResponse:
+    """
+    Run the Generator → Critic → Synthesis pipeline and return the results.
+    This endpoint maintains backward compatibility with the original implementation.
+    For step-by-step execution, use the /generate, /critique, and /synthesize endpoints.
+    """
+    if not request.prompt.strip():
+        raise HTTPException(status_code=400, detail="Prompt must not be empty.")
+
+    try:
+        req_client, req_model = await _resolve_client_and_model(
+            request.lm_studio_url, request.model
+        )
         result = run_pipeline(req_client, req_model, request.prompt)
     except HTTPException:
         raise

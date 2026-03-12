@@ -28,6 +28,60 @@ export async function runChat(prompt, lmStudioUrl = null, model = null) {
 }
 
 /**
+ * Step 1: Generate initial code from user prompt.
+ *
+ * @param {string}      prompt       – the user's coding request
+ * @param {string|null} lmStudioUrl  – optional base URL override
+ * @param {string|null} model        – optional model ID override
+ * @returns {Promise<{content: string, reasoning?: string}>}
+ */
+export async function generateCode(prompt, lmStudioUrl = null, model = null) {
+  const payload = { prompt };
+  if (lmStudioUrl) payload.lm_studio_url = lmStudioUrl;
+  if (model)       payload.model         = model;
+  const { data } = await api.post('/generate', payload);
+  return data;
+}
+
+/**
+ * Step 2: Critique the draft code.
+ *
+ * @param {string}      draftCode    – the code to review
+ * @param {string|null} lmStudioUrl  – optional base URL override
+ * @param {string|null} model        – optional model ID override
+ * @returns {Promise<{content: string, reasoning?: string}>}
+ */
+export async function critiqueCode(draftCode, lmStudioUrl = null, model = null) {
+  const payload = { draft_code: draftCode };
+  if (lmStudioUrl) payload.lm_studio_url = lmStudioUrl;
+  if (model)       payload.model         = model;
+  const { data } = await api.post('/critique', payload);
+  return data;
+}
+
+/**
+ * Step 3: Synthesize final code incorporating critic feedback.
+ *
+ * @param {string}      prompt          – the original user request
+ * @param {string}      draftCode       – the initial generated code
+ * @param {string}      criticComments  – the critic's feedback
+ * @param {string|null} lmStudioUrl     – optional base URL override
+ * @param {string|null} model           – optional model ID override
+ * @returns {Promise<{content: string, reasoning?: string, final_code: string}>}
+ */
+export async function synthesizeCode(prompt, draftCode, criticComments, lmStudioUrl = null, model = null) {
+  const payload = {
+    prompt,
+    draft_code: draftCode,
+    critic_comments: criticComments,
+  };
+  if (lmStudioUrl) payload.lm_studio_url = lmStudioUrl;
+  if (model)       payload.model         = model;
+  const { data } = await api.post('/synthesize', payload);
+  return data;
+}
+
+/**
  * Check whether the FastAPI backend itself is alive.
  */
 export async function checkBackendHealth() {

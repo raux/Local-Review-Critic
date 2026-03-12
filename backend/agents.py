@@ -48,9 +48,91 @@ def extract_code(text: str) -> str:
     return text.strip()
 
 
+def _chat_with_reasoning(client: OpenAI, model: str, system: str, user: str) -> dict:
+    """
+    Send a single-turn chat request and return both the assistant text and reasoning/thinking.
+    Returns a dict with 'content' and optionally 'reasoning' if the model provides it.
+    """
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.4,
+    )
+    result = {
+        "content": response.choices[0].message.content or "",
+    }
+    # Check if the model provides reasoning/thinking (e.g., o1 models)
+    if hasattr(response.choices[0].message, 'reasoning_content') and response.choices[0].message.reasoning_content:
+        result["reasoning"] = response.choices[0].message.reasoning_content
+    return result
+
+
+def generate_code(client: OpenAI, model: str, user_prompt: str) -> dict:
+    """
+    Step 1: Generator creates initial code from user request.
+
+    Returns a dict with:
+      - content: the generated code/response
+      - reasoning: optional thinking/reasoning from the model
+    """
+    logger.info("Step 1: Generator drafting initial code for prompt: %s", user_prompt)
+    result = _chat_with_reasoning(client, model, GENERATOR_SYSTEM, user_prompt)
+    logger.info("Generator draft response (length: %d chars)", len(result["content"]))
+    return result
+
+
+def critique_code(client: OpenAI, model: str, draft_code: str) -> dict:
+    """
+    Step 2: Critic reviews the draft code.
+
+    Returns a dict with:
+      - content: the review/feedback
+      - reasoning: optional thinking/reasoning from the model
+    """
+    logger.info("Step 2: Critic reviewing the draft...")
+    critic_input = (
+        f"Please review the following code and suggest specific improvements:\n\n"
+        f"{draft_code}"
+    )
+    result = _chat_with_reasoning(client, model, CRITIC_SYSTEM, critic_input)
+    logger.info("Critic review response (length: %d chars)", len(result["content"]))
+    return result
+
+
+def synthesize_code(client: OpenAI, model: str, user_prompt: str, draft: str, critic_comments: str) -> dict:
+    """
+    Step 3: Generator produces final refined code incorporating feedback.
+
+    Returns a dict with:
+      - content: the final code/response
+      - reasoning: optional thinking/reasoning from the model
+      - final_code: extracted code without markdown fences
+    """
+    logger.info("Step 3: Generator synthesizing final code with critic feedback...")
+    synthesis_prompt = (
+        f"Original request: {user_prompt}\n\n"
+        f"Your first draft:\n{draft}\n\n"
+        f"Code review feedback:\n{critic_comments}\n\n"
+        f"Please produce the final, improved version of the code incorporating "
+        f"all the reviewer's suggestions."
+    )
+    result = _chat_with_reasoning(client, model, GENERATOR_SYSTEM, synthesis_prompt)
+    logger.info("Generator final response (length: %d chars)", len(result["content"]))
+
+    # Extract clean code
+    result["final_code"] = extract_code(result["content"])
+    logger.info("Final code extracted (length: %d chars)", len(result["final_code"]))
+
+    return result
+
+
 def run_pipeline(client: OpenAI, model: str, user_prompt: str) -> dict:
     """
     Execute the three-step Generator → Critic → Synthesis pipeline.
+    This function maintains backward compatibility with the existing /chat endpoint.
 
     Returns a dict with:
       - chat_history: list of {role, content} messages shown in the UI
@@ -61,39 +143,22 @@ def run_pipeline(client: OpenAI, model: str, user_prompt: str) -> dict:
     chat_history: list[dict] = []
 
     # Step 1 – Generator (first pass)
-    logger.info("Step 1: Generator drafting initial code...")
-    draft = _chat(client, model, GENERATOR_SYSTEM, user_prompt)
-    logger.info("Generator draft response (length: %d chars): %s", len(draft), draft)
-    chat_history.append({"role": "generator", "content": draft})
+    gen_result = generate_code(client, model, user_prompt)
+    chat_history.append({"role": "generator", "content": gen_result["content"]})
 
     # Step 2 – Critic reviews the draft
-    logger.info("Step 2: Critic reviewing the draft...")
-    critic_input = (
-        f"Please review the following code and suggest specific improvements:\n\n"
-        f"{draft}"
-    )
-    critic_comments = _chat(client, model, CRITIC_SYSTEM, critic_input)
-    logger.info("Critic review response (length: %d chars): %s", len(critic_comments), critic_comments)
+    critic_result = critique_code(client, model, gen_result["content"])
+    critic_comments = critic_result["content"]
     chat_history.append({"role": "critic", "content": critic_comments})
 
     # Step 3 – Generator produces the final refined code
-    logger.info("Step 3: Generator synthesizing final code with critic feedback...")
-    synthesis_prompt = (
-        f"Original request: {user_prompt}\n\n"
-        f"Your first draft:\n{draft}\n\n"
-        f"Code review feedback:\n{critic_comments}\n\n"
-        f"Please produce the final, improved version of the code incorporating "
-        f"all the reviewer's suggestions."
-    )
-    final_response = _chat(client, model, GENERATOR_SYSTEM, synthesis_prompt)
-    logger.info("Generator final response (length: %d chars): %s", len(final_response), final_response)
-    chat_history.append({"role": "generator", "content": final_response})
+    synth_result = synthesize_code(client, model, user_prompt, gen_result["content"], critic_comments)
+    chat_history.append({"role": "generator", "content": synth_result["content"]})
 
-    final_code = extract_code(final_response)
-    logger.info("Pipeline completed successfully. Final code extracted (length: %d chars)", len(final_code))
+    logger.info("Pipeline completed successfully.")
 
     return {
         "chat_history": chat_history,
         "critic_comments": critic_comments,
-        "final_code": final_code,
+        "final_code": synth_result["final_code"],
     }
