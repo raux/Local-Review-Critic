@@ -7,6 +7,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/chat': 'http://localhost:8000',
+      '/generate': 'http://localhost:8000',
+      '/critique': 'http://localhost:8000',
+      '/synthesize': 'http://localhost:8000',
       '/health': 'http://localhost:8000',
       '/status': 'http://localhost:8000',
     },
