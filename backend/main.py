@@ -274,7 +274,11 @@ async def status() -> dict:
 async def generate(request: GenerateRequest) -> GenerateResponse:
     """
     Step 1: Generate initial code from user prompt.
-    Returns the full response content, optional reasoning, and extracted code for the code canvas.
+
+    Returns:
+      - content: full model response (natural language + code blocks) shown in chat
+      - reasoning: optional thinking/reasoning from the model
+      - generated_code: extracted code without markdown fences for the code canvas
     """
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt must not be empty.")
