@@ -14,6 +14,16 @@ Local-Review-Critic is a full-stack web application that combines local language
   - 🔍 **Critic Agent**: Reviews code for bugs, efficiency, and security issues
   - ✨ **Synthesis Agent**: Refines code incorporating all feedback
 
+- **Button-Controlled Execution**: Step through the pipeline at your own pace
+  - Review generated code before requesting critique
+  - Examine critic feedback before applying changes
+  - Full control over each stage of the process
+
+- **Thinking Model Support**: See the reasoning process of thinking models
+  - Captures and displays internal reasoning from models like o1
+  - Purple "🤔 Thinking" messages show model's thought process
+  - Gain insights into how the model approaches problems
+
 - **Split-Pane Interface**:
   - Chat history with real-time agent conversations
   - Syntax-highlighted code viewer with copy functionality
@@ -132,13 +142,29 @@ The application will be available at `http://localhost:5173`
 2. **Generate Code**:
    - Enter your code requirements in the chat input
    - Press Enter or click Send
-   - Watch the pipeline progress through three phases:
-     - 🔄 Generating code...
-     - 🔍 Reviewing code...
-     - ✨ Applying feedback...
+   - Wait for the Generator to create initial code
+   - Review the generated code in the right panel
 
-3. **View Results**:
-   - Chat history appears in the left pane
+3. **Review Code** (Button-Controlled):
+   - Click the "🔍 Review Code" button when ready
+   - The Critic will analyze the code for issues
+   - Review the feedback in the chat
+
+4. **Apply Changes** (Button-Controlled):
+   - Click the "✨ Apply Changes" button when ready
+   - The Synthesis agent will create the final improved code
+   - The refined code appears in the code viewer
+
+5. **Start New Request**:
+   - Click "Start New Request" to begin again
+   - The interface resets for your next prompt
+
+> **Note**: Each step is now controlled by a button click, giving you full control over the pipeline. You can review each stage's output before proceeding to the next.
+
+For detailed usage instructions, see [STEP_BY_STEP_USAGE.md](STEP_BY_STEP_USAGE.md).
+
+6. **View Results**:
+   - Chat history appears in the left pane showing all agent interactions
    - Final refined code appears in the right pane with syntax highlighting
    - Use the copy button to grab the code
 
