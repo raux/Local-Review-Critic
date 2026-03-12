@@ -2,26 +2,42 @@
  * Chat.jsx – Chat bubble list with auto-scroll to the bottom.
  *
  * Each message in `messages` has:
- *   { role: 'user' | 'generator' | 'critic' | 'thinking' | 'system', content: string }
+ *   { role: 'user' | 'generator' | 'positive_critic' | 'negative_critic' | 'thinking' | 'system', content: string }
  */
 import { useEffect, useRef } from 'react';
 
 const ROLE_META = {
-  user:      { label: 'You',       bg: 'bg-blue-900',   text: 'text-blue-200',   align: 'items-end'   },
-  generator: { label: 'Generator', bg: 'bg-slate-700',  text: 'text-slate-100',  align: 'items-start' },
-  critic:    { label: 'Critic',    bg: 'bg-amber-900',  text: 'text-amber-100',  align: 'items-start' },
-  thinking:  { label: '🤔 Thinking', bg: 'bg-purple-900', text: 'text-purple-100', align: 'items-start' },
-  system:    { label: 'System',    bg: 'bg-slate-600',  text: 'text-slate-300',  align: 'items-start' },
+  user:            { label: 'You',              bg: 'bg-blue-900',   text: 'text-blue-200',   align: 'items-end'   },
+  generator:       { label: 'Generator',        bg: 'bg-slate-700',  text: 'text-slate-100',  align: 'items-start' },
+  positive_critic: { label: '👍 Positive Critic', bg: 'bg-green-900',  text: 'text-green-100',  align: 'items-start' },
+  negative_critic: { label: '👎 Negative Critic', bg: 'bg-red-900',    text: 'text-red-100',    align: 'items-start' },
+  critic:          { label: 'Critic',           bg: 'bg-amber-900',  text: 'text-amber-100',  align: 'items-start' },
+  thinking:        { label: '🤔 Thinking',       bg: 'bg-purple-900', text: 'text-purple-100', align: 'items-start' },
+  system:          { label: 'System',           bg: 'bg-slate-600',  text: 'text-slate-300',  align: 'items-start' },
 };
+
+/**
+ * Strip markdown code fences from text so the chat shows only natural language.
+ */
+function stripCodeBlocks(text) {
+  // Remove fenced code blocks (```...```)
+  let result = text.replace(/```[\s\S]*?```/g, '').trim();
+  // Remove inline code (`...`)
+  result = result.replace(/`[^`]+`/g, '').trim();
+  // Collapse multiple blank lines into one
+  result = result.replace(/\n{3,}/g, '\n\n');
+  return result || text;
+}
 
 function ChatBubble({ role, content }) {
   const meta = ROLE_META[role] || ROLE_META.generator;
+  const displayContent = stripCodeBlocks(content);
 
   return (
     <div className={`flex flex-col gap-1 ${meta.align}`}>
       <span className="text-xs text-slate-500 px-1">{meta.label}</span>
       <div className={`max-w-[90%] px-4 py-2 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${meta.bg} ${meta.text}`}>
-        {content}
+        {displayContent}
       </div>
     </div>
   );

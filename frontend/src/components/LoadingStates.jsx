@@ -2,15 +2,15 @@
  * LoadingStates.jsx – Dynamic status indicator for the pipeline steps.
  *
  * Shows the current pipeline phase:
- *   "Generator is drafting…"  →  "Critic is reviewing…"  →  "Applying fixes…"
+ *   "Generator is drafting…"  →  "Critics are reviewing…"  →  "Applying fixes…"
  */
 export default function LoadingStates({ phase }) {
   if (!phase) return null;
 
   const steps = [
-    { id: 'generating', label: 'Generator is drafting…' },
-    { id: 'reviewing',  label: 'Critic is reviewing…'  },
-    { id: 'applying',   label: 'Applying fixes…'        },
+    { id: 'generating', label: 'Generator is drafting…'  },
+    { id: 'reviewing',  label: 'Critics are reviewing…'  },
+    { id: 'applying',   label: 'Applying fixes…'         },
   ];
 
   const current = steps.findIndex(s => s.id === phase);
