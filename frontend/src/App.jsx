@@ -10,8 +10,8 @@ import Chat          from './components/Chat.jsx';
 import CodeViewer    from './components/CodeViewer.jsx';
 import LoadingStates from './components/LoadingStates.jsx';
 import LmStudioConfig from './components/LmStudioConfig.jsx';
-import { runChat }   from './api.js';
-import { Send }      from 'lucide-react';
+import { generateCode, critiqueCode, synthesizeCode } from './api.js';
+import { Send } from 'lucide-react';
 
 // Pipeline phase sequence used by LoadingStates
 const PHASES = ['generating', 'reviewing', 'applying'];
@@ -23,6 +23,13 @@ export default function App() {
   const [error, setError]           = useState('');
   const [input, setInput]           = useState('');
   const [lmConfig, setLmConfig]     = useState({ lmStudioUrl: '', model: '' });
+
+  // Step-by-step execution state
+  const [currentStep, setCurrentStep]       = useState(0);  // 0=initial, 1=generated, 2=critiqued, 3=synthesized
+  const [userPrompt, setUserPrompt]         = useState('');
+  const [draftCode, setDraftCode]           = useState('');
+  const [criticComments, setCriticComments] = useState('');
+  const [isProcessing, setIsProcessing]     = useState(false);
 
   // Ref so we can simulate phase progression during the (blocking) pipeline call
   const phaseTimer = useRef(null);
@@ -49,26 +56,40 @@ export default function App() {
 
   const handleSend = async () => {
     const prompt = input.trim();
-    if (!prompt || phase) return;
+    if (!prompt || isProcessing) return;
 
     setInput('');
     setError('');
+    setUserPrompt(prompt);
     setMessages(prev => [...prev, { role: 'user', content: prompt }]);
-    startPhaseAnimation();
+    setCurrentStep(0);
+
+    // Start with step 1: Generate
+    await handleGenerate(prompt);
+  };
+
+  const handleGenerate = async (prompt = userPrompt) => {
+    setIsProcessing(true);
+    setPhase('generating');
+    setError('');
 
     try {
-      const data = await runChat(
+      const data = await generateCode(
         prompt,
         lmConfig.lmStudioUrl || null,
         lmConfig.model        || null,
       );
 
-      // Add all pipeline messages to the chat history
-      for (const msg of data.chat_history) {
-        setMessages(prev => [...prev, msg]);
+      setDraftCode(data.content);
+      setMessages(prev => [...prev, { role: 'generator', content: data.content, reasoning: data.reasoning }]);
+
+      // If there's reasoning/thinking, add it to chat
+      if (data.reasoning) {
+        setMessages(prev => [...prev, { role: 'thinking', content: data.reasoning }]);
       }
 
-      setFinalCode(data.final_code);
+      setCurrentStep(1);
+      setFinalCode(data.content);  // Show initial code
     } catch (err) {
       const detail =
         err?.response?.data?.detail ||
@@ -86,7 +107,100 @@ export default function App() {
       setError(displayMsg);
       setMessages(prev => [...prev, { role: 'generator', content: displayMsg }]);
     } finally {
-      stopPhaseAnimation();
+      setIsProcessing(false);
+      setPhase(null);
+    }
+  };
+
+  const handleCritique = async () => {
+    if (!draftCode || isProcessing) return;
+
+    setIsProcessing(true);
+    setPhase('reviewing');
+    setError('');
+
+    try {
+      const data = await critiqueCode(
+        draftCode,
+        lmConfig.lmStudioUrl || null,
+        lmConfig.model        || null,
+      );
+
+      setCriticComments(data.content);
+      setMessages(prev => [...prev, { role: 'critic', content: data.content, reasoning: data.reasoning }]);
+
+      // If there's reasoning/thinking, add it to chat
+      if (data.reasoning) {
+        setMessages(prev => [...prev, { role: 'thinking', content: data.reasoning }]);
+      }
+
+      setCurrentStep(2);
+    } catch (err) {
+      const detail =
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Unknown error';
+
+      const isOffline = detail.toLowerCase().includes('offline') ||
+                        detail.toLowerCase().includes('reachable') ||
+                        err?.response?.status === 503;
+
+      const displayMsg = isOffline
+        ? '⚠️ Local Server Offline – make sure LM Studio is running and a model is loaded.'
+        : `❌ Error: ${detail}`;
+
+      setError(displayMsg);
+      setMessages(prev => [...prev, { role: 'critic', content: displayMsg }]);
+    } finally {
+      setIsProcessing(false);
+      setPhase(null);
+    }
+  };
+
+  const handleSynthesize = async () => {
+    if (!draftCode || !criticComments || isProcessing) return;
+
+    setIsProcessing(true);
+    setPhase('applying');
+    setError('');
+
+    try {
+      const data = await synthesizeCode(
+        userPrompt,
+        draftCode,
+        criticComments,
+        lmConfig.lmStudioUrl || null,
+        lmConfig.model        || null,
+      );
+
+      setMessages(prev => [...prev, { role: 'generator', content: data.content, reasoning: data.reasoning }]);
+
+      // If there's reasoning/thinking, add it to chat
+      if (data.reasoning) {
+        setMessages(prev => [...prev, { role: 'thinking', content: data.reasoning }]);
+      }
+
+      setFinalCode(data.final_code);
+      setCurrentStep(3);
+    } catch (err) {
+      const detail =
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Unknown error';
+
+      const isOffline = detail.toLowerCase().includes('offline') ||
+                        detail.toLowerCase().includes('reachable') ||
+                        err?.response?.status === 503;
+
+      const displayMsg = isOffline
+        ? '⚠️ Local Server Offline – make sure LM Studio is running and a model is loaded.'
+        : `❌ Error: ${detail}`;
+
+      setError(displayMsg);
+      setMessages(prev => [...prev, { role: 'generator', content: displayMsg }]);
+    } finally {
+      setIsProcessing(false);
+      setPhase(null);
     }
   };
 
@@ -132,7 +246,7 @@ export default function App() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                disabled={isLoading}
+                disabled={isLoading || currentStep > 0}
                 placeholder="Ask for a code solution… (Enter to send, Shift+Enter for new line)"
                 className="flex-1 resize-none rounded-lg bg-slate-900 border border-slate-600
                            text-sm text-slate-100 placeholder-slate-500 px-3 py-2
@@ -141,7 +255,7 @@ export default function App() {
               />
               <button
                 onClick={handleSend}
-                disabled={isLoading || !input.trim()}
+                disabled={isLoading || !input.trim() || currentStep > 0}
                 className="flex-shrink-0 p-3 rounded-lg bg-blue-600 hover:bg-blue-500
                            disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 title="Send"
@@ -159,6 +273,70 @@ export default function App() {
               <LoadingStates phase={phase} />
             </div>
           )}
+
+          {/* Step control buttons */}
+          {currentStep > 0 && currentStep < 3 && (
+            <div className="p-4 flex-shrink-0 bg-slate-800 border-b border-slate-700">
+              <div className="flex gap-3 items-center">
+                {currentStep === 1 && (
+                  <>
+                    <button
+                      onClick={handleCritique}
+                      disabled={isProcessing}
+                      className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500
+                                 disabled:opacity-40 disabled:cursor-not-allowed transition-colors
+                                 text-sm font-medium"
+                    >
+                      {isProcessing ? '⏳ Processing...' : '🔍 Review Code'}
+                    </button>
+                    <span className="text-xs text-slate-400">
+                      Click to have the critic review the generated code
+                    </span>
+                  </>
+                )}
+
+                {currentStep === 2 && (
+                  <>
+                    <button
+                      onClick={handleSynthesize}
+                      disabled={isProcessing}
+                      className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500
+                                 disabled:opacity-40 disabled:cursor-not-allowed transition-colors
+                                 text-sm font-medium"
+                    >
+                      {isProcessing ? '⏳ Processing...' : '✨ Apply Changes'}
+                    </button>
+                    <span className="text-xs text-slate-400">
+                      Click to generate the final improved code
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {currentStep === 3 && (
+            <div className="p-4 flex-shrink-0 bg-slate-800 border-b border-slate-700">
+              <div className="flex gap-3 items-center">
+                <span className="text-sm text-green-400 font-medium">✓ Pipeline Complete</span>
+                <button
+                  onClick={() => {
+                    setCurrentStep(0);
+                    setUserPrompt('');
+                    setDraftCode('');
+                    setCriticComments('');
+                    setFinalCode('');
+                    setMessages([]);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500
+                             transition-colors text-sm font-medium"
+                >
+                  Start New Request
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex-1 overflow-hidden">
             <CodeViewer code={finalCode} language="python" />
           </div>
