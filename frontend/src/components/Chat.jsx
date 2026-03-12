@@ -2,7 +2,7 @@
  * Chat.jsx – Chat bubble list with auto-scroll to the bottom.
  *
  * Each message in `messages` has:
- *   { role: 'user' | 'generator' | 'critic' | 'thinking', content: string }
+ *   { role: 'user' | 'generator' | 'critic' | 'thinking' | 'system', content: string }
  */
 import { useEffect, useRef } from 'react';
 
@@ -11,6 +11,7 @@ const ROLE_META = {
   generator: { label: 'Generator', bg: 'bg-slate-700',  text: 'text-slate-100',  align: 'items-start' },
   critic:    { label: 'Critic',    bg: 'bg-amber-900',  text: 'text-amber-100',  align: 'items-start' },
   thinking:  { label: '🤔 Thinking', bg: 'bg-purple-900', text: 'text-purple-100', align: 'items-start' },
+  system:    { label: 'System',     bg: 'bg-slate-600',  text: 'text-slate-200',  align: 'items-start' },
 };
 
 function ChatBubble({ role, content }) {

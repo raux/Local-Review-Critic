@@ -31,6 +31,10 @@ export default function App() {
   const [criticComments, setCriticComments] = useState('');
   const [isProcessing, setIsProcessing]     = useState(false);
 
+  // Multi-critique and revert state
+  const [allCriticComments, setAllCriticComments] = useState([]);   // accumulated critique rounds
+  const [codeBeforeSynthesis, setCodeBeforeSynthesis] = useState(''); // for revert
+
   // Ref so we can simulate phase progression during the (blocking) pipeline call
   const phaseTimer = useRef(null);
 
@@ -127,6 +131,7 @@ export default function App() {
       );
 
       setCriticComments(data.content);
+      setAllCriticComments(prev => [...prev, data.content]);
       setMessages(prev => [...prev, { role: 'critic', content: data.content, reasoning: data.reasoning }]);
 
       // If there's reasoning/thinking, add it to chat
@@ -164,11 +169,17 @@ export default function App() {
     setPhase('applying');
     setError('');
 
+    // Save current code for revert
+    setCodeBeforeSynthesis(finalCode);
+
+    // Join all accumulated critic comments for a comprehensive synthesis
+    const accumulatedComments = allCriticComments.join('\n\n---\n\n');
+
     try {
       const data = await synthesizeCode(
         userPrompt,
         draftCode,
-        criticComments,
+        accumulatedComments,
         lmConfig.lmStudioUrl || null,
         lmConfig.model        || null,
       );
@@ -202,6 +213,12 @@ export default function App() {
       setIsProcessing(false);
       setPhase(null);
     }
+  };
+
+  const handleRevert = () => {
+    setFinalCode(codeBeforeSynthesis);
+    setCurrentStep(2);
+    setMessages(prev => [...prev, { role: 'system', content: '⏪ Reverted to code before synthesis. You can critique again or apply changes.' }]);
   };
 
   const handleKeyDown = (e) => {
@@ -298,6 +315,15 @@ export default function App() {
                 {currentStep === 2 && (
                   <>
                     <button
+                      onClick={handleCritique}
+                      disabled={isProcessing}
+                      className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500
+                                 disabled:opacity-40 disabled:cursor-not-allowed transition-colors
+                                 text-sm font-medium"
+                    >
+                      {isProcessing ? '⏳ Processing...' : '🔍 Critique Again'}
+                    </button>
+                    <button
                       onClick={handleSynthesize}
                       disabled={isProcessing}
                       className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500
@@ -307,7 +333,7 @@ export default function App() {
                       {isProcessing ? '⏳ Processing...' : '✨ Apply Changes'}
                     </button>
                     <span className="text-xs text-slate-400">
-                      Click to generate the final improved code
+                      Critiqued {allCriticComments.length} time{allCriticComments.length !== 1 ? 's' : ''} · Critique again or apply changes
                     </span>
                   </>
                 )}
@@ -320,11 +346,20 @@ export default function App() {
               <div className="flex gap-3 items-center">
                 <span className="text-sm text-green-400 font-medium">✓ Pipeline Complete</span>
                 <button
+                  onClick={handleRevert}
+                  className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500
+                             transition-colors text-sm font-medium"
+                >
+                  ⏪ Revert to Previous Code
+                </button>
+                <button
                   onClick={() => {
                     setCurrentStep(0);
                     setUserPrompt('');
                     setDraftCode('');
                     setCriticComments('');
+                    setAllCriticComments([]);
+                    setCodeBeforeSynthesis('');
                     setFinalCode('');
                     setMessages([]);
                   }}
