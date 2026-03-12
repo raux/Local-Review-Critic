@@ -34,14 +34,17 @@ function DiffView({ generatorMd, criticMd }) {
 
         return (
           <div key={i} className={`${bg} px-2`}>
-            {part.value.split('\n').map((line, j) =>
-              line || j < part.value.split('\n').length - 1 ? (
-                <div key={j} className="whitespace-pre-wrap">
-                  <span className="text-slate-500 select-none mr-2">{prefix}</span>
-                  {line}
-                </div>
-              ) : null,
-            )}
+            {(() => {
+              const lines = part.value.split('\n');
+              return lines.map((line, j) =>
+                line || j < lines.length - 1 ? (
+                  <div key={j} className="whitespace-pre-wrap">
+                    <span className="text-slate-500 select-none mr-2">{prefix}</span>
+                    {line}
+                  </div>
+                ) : null,
+              );
+            })()}
           </div>
         );
       })}
