@@ -1,0 +1,75 @@
+<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1200" height="800" fill="#0f172a"/>
+
+  <!-- Header -->
+  <rect width="1200" height="50" fill="#1e293b"/>
+  <text x="20" y="32" font-family="Arial, sans-serif" font-size="18" fill="#f1f5f9">🔍 Local Review Critic</text>
+  <text x="250" y="32" font-family="Arial, sans-serif" font-size="12" fill="#64748b">Generator → Critic → Synthesis · powered by LM Studio</text>
+
+  <!-- Connection bar -->
+  <rect y="50" width="1200" height="45" fill="#1e293b"/>
+  <circle cx="30" cy="72" r="6" fill="#22c55e"/>
+  <text x="45" y="77" font-family="Arial, sans-serif" font-size="13" fill="#f1f5f9">Connected to LM Studio</text>
+
+  <!-- Divider -->
+  <line x1="480" y1="95" x2="480" y2="800" stroke="#334155" stroke-width="1"/>
+
+  <!-- Left pane (Chat) -->
+  <text x="20" y="125" font-family="Arial, sans-serif" font-size="11" fill="#64748b">You</text>
+  <rect x="20" y="135" width="420" height="60" rx="12" fill="#1e3a8a"/>
+  <text x="35" y="160" font-family="Arial, sans-serif" font-size="13" fill="#bfdbfe">Create a Python function to calculate</text>
+  <text x="35" y="178" font-family="Arial, sans-serif" font-size="13" fill="#bfdbfe">fibonacci numbers</text>
+
+  <text x="20" y="220" font-family="Arial, sans-serif" font-size="11" fill="#64748b">Generator</text>
+  <rect x="20" y="230" width="420" height="100" rx="12" fill="#334155"/>
+  <text x="35" y="255" font-family="Arial, sans-serif" font-size="12" fill="#f1f5f9">I'll create a Python function that calculates</text>
+  <text x="35" y="273" font-family="Arial, sans-serif" font-size="12" fill="#f1f5f9">fibonacci numbers using dynamic programming</text>
+  <text x="35" y="291" font-family="Arial, sans-serif" font-size="12" fill="#f1f5f9">for efficiency...</text>
+
+  <text x="20" y="355" font-family="Arial, sans-serif" font-size="11" fill="#64748b">Critic</text>
+  <rect x="20" y="365" width="420" height="100" rx="12" fill="#78350f"/>
+  <text x="35" y="390" font-family="Arial, sans-serif" font-size="12" fill="#fef3c7">The implementation looks good. Consider</text>
+  <text x="35" y="408" font-family="Arial, sans-serif" font-size="12" fill="#fef3c7">adding input validation and handling edge</text>
+  <text x="35" y="426" font-family="Arial, sans-serif" font-size="12" fill="#fef3c7">cases for n < 0...</text>
+
+  <!-- Input area -->
+  <rect x="20" y="720" width="420" height="60" rx="8" fill="#0f172a" stroke="#475569" stroke-width="1"/>
+  <text x="35" y="755" font-family="Arial, sans-serif" font-size="12" fill="#64748b">Ask for a code solution...</text>
+
+  <!-- Right pane (Code Viewer) -->
+  <rect x="500" y="110" width="680" height="30" fill="#1e293b"/>
+  <text x="515" y="130" font-family="Courier New, monospace" font-size="11" fill="#94a3b8">python</text>
+  <rect x="1090" y="115" width="75" height="20" rx="4" fill="#334155"/>
+  <text x="1100" y="129" font-family="Arial, sans-serif" font-size="11" fill="#cbd5e1">📋 Copy</text>
+
+  <rect x="500" y="140" width="680" height="640" fill="#0f172a"/>
+  <text x="520" y="170" font-family="Courier New, monospace" font-size="12" fill="#22c55e">def</text>
+  <text x="555" y="170" font-family="Courier New, monospace" font-size="12" fill="#60a5fa">fibonacci</text>
+  <text x="640" y="170" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">(n):</text>
+
+  <text x="540" y="195" font-family="Courier New, monospace" font-size="12" fill="#f97316">"""Calculate fibonacci numbers."""</text>
+
+  <text x="540" y="220" font-family="Courier New, monospace" font-size="12" fill="#22c55e">if</text>
+  <text x="565" y="220" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9"> n &lt; </text>
+  <text x="610" y="220" font-family="Courier New, monospace" font-size="12" fill="#a78bfa">0</text>
+  <text x="625" y="220" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">:</text>
+
+  <text x="560" y="245" font-family="Courier New, monospace" font-size="12" fill="#22c55e">raise</text>
+  <text x="605" y="245" font-family="Courier New, monospace" font-size="12" fill="#60a5fa">ValueError</text>
+  <text x="690" y="245" font-family="Courier New, monospace" font-size="12" fill="#f97316">("n must be non-negative")</text>
+
+  <text x="540" y="270" font-family="Courier New, monospace" font-size="12" fill="#22c55e">if</text>
+  <text x="565" y="270" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9"> n &lt;= </text>
+  <text x="615" y="270" font-family="Courier New, monospace" font-size="12" fill="#a78bfa">1</text>
+  <text x="630" y="270" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9">:</text>
+
+  <text x="560" y="295" font-family="Courier New, monospace" font-size="12" fill="#22c55e">return</text>
+  <text x="610" y="295" font-family="Courier New, monospace" font-size="12" fill="#f1f5f9"> n</text>
+
+  <text x="540" y="345" font-family="Courier New, monospace" font-size="12" fill="#64748b"># More code...</text>
+
+  <!-- Placeholder text -->
+  <text x="600" y="500" font-family="Arial, sans-serif" font-size="14" fill="#64748b" text-anchor="middle">[Screenshot Placeholder]</text>
+  <text x="600" y="520" font-family="Arial, sans-serif" font-size="11" fill="#475569" text-anchor="middle">Replace with actual application screenshot</text>
+</svg>
