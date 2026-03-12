@@ -342,6 +342,15 @@ export default function App() {
                 {currentStep === 2 && (
                   <>
                     <button
+                      onClick={handleCritique}
+                      disabled={isProcessing}
+                      className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500
+                                 disabled:opacity-40 disabled:cursor-not-allowed transition-colors
+                                 text-sm font-medium"
+                    >
+                      {isProcessing ? '⏳ Processing...' : '🔍 Review Again'}
+                    </button>
+                    <button
                       onClick={handleSynthesize}
                       disabled={isProcessing}
                       className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500
@@ -351,7 +360,7 @@ export default function App() {
                       {isProcessing ? '⏳ Processing...' : '✨ Apply Changes'}
                     </button>
                     <span className="text-xs text-slate-400">
-                      Click to generate the final improved code
+                      Review again for another critique, or apply changes
                     </span>
                   </>
                 )}
@@ -363,6 +372,21 @@ export default function App() {
             <div className="p-4 flex-shrink-0 bg-slate-800 border-b border-slate-700">
               <div className="flex gap-3 items-center flex-wrap">
                 <span className="text-sm text-green-400 font-medium">✓ Pipeline Complete</span>
+                <button
+                  onClick={() => {
+                    setFinalCode(draftCode);
+                    setCriticComments('');
+                    setCurrentStep(1);
+                    setGeneratorMd('');
+                    setCriticMd('');
+                    setShowAgentMd(false);
+                    setMessages(prev => [...prev, { role: 'system', content: '↩️ Reverted to original draft code.' }]);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500
+                             transition-colors text-sm font-medium"
+                >
+                  ↩️ Revert to Draft
+                </button>
                 <button
                   onClick={handleGenerateAgentMd}
                   disabled={isGeneratingMd || isProcessing}
