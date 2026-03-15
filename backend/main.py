@@ -47,6 +47,23 @@ _ALLOWED_HOSTS: frozenset[str] = frozenset({
 })
 
 
+def _normalize_base_url(url: str) -> str:
+    """
+    Ensure *url* ends with ``/v1`` so that appending ``/models`` or creating
+    an OpenAI client always produces the correct LM Studio API path.
+
+    Accepts any of:
+      - ``http://localhost:1234``
+      - ``http://localhost:1234/``
+      - ``http://localhost:1234/v1``
+      - ``http://localhost:1234/v1/``
+    """
+    url = url.rstrip("/")
+    if not url.endswith("/v1"):
+        url = url + "/v1"
+    return url
+
+
 def _validate_lm_studio_url(url: str) -> str:
     """
     Ensure *url* points only to a loopback address (localhost / 127.0.0.1 / ::1).
@@ -75,6 +92,7 @@ def _validate_lm_studio_url(url: str) -> str:
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Verify that LM Studio is reachable when the server starts."""
+    health_url = _normalize_base_url(LM_STUDIO_BASE_URL) + "/models"
     logger.debug("Configured LM_STUDIO_BASE_URL = %s", LM_STUDIO_BASE_URL)
     logger.debug("Configured LM_STUDIO_MODEL    = %s", LM_STUDIO_MODEL or "(auto-detect)")
     health_url = LM_STUDIO_BASE_URL.rstrip("/") + "/models"
@@ -117,6 +135,7 @@ _resolved_model: str = ""
 def get_client() -> OpenAI:
     global _client
     if _client is None:
+        _client = OpenAI(base_url=_normalize_base_url(LM_STUDIO_BASE_URL), api_key="lm-studio")
         logger.debug("Creating default OpenAI client → base_url=%s", LM_STUDIO_BASE_URL)
         _client = OpenAI(base_url=LM_STUDIO_BASE_URL, api_key="lm-studio")
     return _client
@@ -168,6 +187,7 @@ async def _resolve_client_and_model(lm_studio_url: str | None, model: str | None
         effective_url = f"http://localhost:{port}/v1"
         logger.debug("Effective URL after normalisation: %s", effective_url)
     else:
+        effective_url = _normalize_base_url(LM_STUDIO_BASE_URL)
         effective_url = LM_STUDIO_BASE_URL.rstrip("/")
         if not effective_url.endswith("/v1"):
             effective_url = effective_url + "/v1"
@@ -229,6 +249,7 @@ async def _resolve_client_and_model(lm_studio_url: str | None, model: str | None
         ) from exc
 
     # Build a per-request client if the URL differs from the global default
+    if effective_url != _normalize_base_url(LM_STUDIO_BASE_URL):
     if effective_url != LM_STUDIO_BASE_URL.rstrip("/"):
         logger.debug(
             "URL differs from global default – creating per-request client for %s",
@@ -332,6 +353,7 @@ async def health() -> dict:
 @app.get("/status")
 async def status() -> dict:
     """Check whether LM Studio is currently reachable."""
+    health_url = _normalize_base_url(LM_STUDIO_BASE_URL) + "/models"
     health_url = LM_STUDIO_BASE_URL.rstrip("/") + "/models"
     logger.debug("Status check → GET %s", health_url)
     try:

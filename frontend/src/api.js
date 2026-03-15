@@ -124,14 +124,25 @@ export async function checkServerStatus() {
 const LM_STUDIO_API_KEY = 'lm-studio';
 
 /**
+ * Normalize an LM Studio base URL so it never ends with /v1 or /v1/.
+ * This avoids the double-/v1 bug when the caller appends `/v1/models`.
+ *
+ * @param {string} url – e.g. "http://localhost:1234" or "http://localhost:1234/v1"
+ * @returns {string}   – e.g. "http://localhost:1234"
+ */
+function stripV1Suffix(url) {
+  return url.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+}
+
+/**
  * Fetch the list of models currently loaded in LM Studio.
  *
- * @param {string} baseUrl – e.g. "http://localhost:1234"  (no trailing slash, no /v1)
+ * @param {string} baseUrl – e.g. "http://localhost:1234" or "http://localhost:1234/v1"
  * @returns {Array<{id: string}>}
  */
 export async function fetchLmStudioModels(baseUrl = 'http://localhost:1234') {
   try {
-    const resp = await fetch(`${baseUrl}/v1/models`, {
+    const resp = await fetch(`${stripV1Suffix(baseUrl)}/v1/models`, {
       headers: { Authorization: `Bearer ${LM_STUDIO_API_KEY}` },
       signal: AbortSignal.timeout(2500),
     });
@@ -146,11 +157,11 @@ export async function fetchLmStudioModels(baseUrl = 'http://localhost:1234') {
 /**
  * Ping LM Studio and return true if it responds.
  *
- * @param {string} baseUrl – e.g. "http://localhost:1234"
+ * @param {string} baseUrl – e.g. "http://localhost:1234" or "http://localhost:1234/v1"
  */
 export async function pingLmStudio(baseUrl = 'http://localhost:1234') {
   try {
-    const resp = await fetch(`${baseUrl}/v1/models`, {
+    const resp = await fetch(`${stripV1Suffix(baseUrl)}/v1/models`, {
       headers: { Authorization: `Bearer ${LM_STUDIO_API_KEY}` },
       signal: AbortSignal.timeout(2500),
     });
