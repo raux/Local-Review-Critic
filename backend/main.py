@@ -22,8 +22,17 @@ from agents import (
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 logger = logging.getLogger(__name__)
+
+# Keep noisy third-party loggers at WARNING so our debug output stays readable
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.INFO)
 
 LM_STUDIO_BASE_URL: str = os.getenv("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
 LM_STUDIO_MODEL: str = os.getenv("LM_STUDIO_MODEL", "")
@@ -84,16 +93,22 @@ def _validate_lm_studio_url(url: str) -> str:
 async def lifespan(application: FastAPI):
     """Verify that LM Studio is reachable when the server starts."""
     health_url = _normalize_base_url(LM_STUDIO_BASE_URL) + "/models"
+    logger.debug("Configured LM_STUDIO_BASE_URL = %s", LM_STUDIO_BASE_URL)
+    logger.debug("Configured LM_STUDIO_MODEL    = %s", LM_STUDIO_MODEL or "(auto-detect)")
+    health_url = LM_STUDIO_BASE_URL.rstrip("/") + "/models"
+    logger.debug("Startup health-check → GET %s", health_url)
     try:
         async with httpx.AsyncClient(timeout=5.0) as http:
             resp = await http.get(health_url)
+            logger.debug("Startup health-check response: status=%s", resp.status_code)
             resp.raise_for_status()
         logger.info("LM Studio is reachable at %s", LM_STUDIO_BASE_URL)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "LM Studio not reachable at startup (%s). "
+            "LM Studio not reachable at startup (%s: %s). "
             "The server will still start but AI calls will fail until "
             "LM Studio is running.",
+            type(exc).__name__,
             exc,
         )
     yield  # application runs here
@@ -121,6 +136,8 @@ def get_client() -> OpenAI:
     global _client
     if _client is None:
         _client = OpenAI(base_url=_normalize_base_url(LM_STUDIO_BASE_URL), api_key="lm-studio")
+        logger.debug("Creating default OpenAI client → base_url=%s", LM_STUDIO_BASE_URL)
+        _client = OpenAI(base_url=LM_STUDIO_BASE_URL, api_key="lm-studio")
     return _client
 
 
@@ -130,11 +147,14 @@ def get_model() -> str:
         return _resolved_model
     if LM_STUDIO_MODEL:
         _resolved_model = LM_STUDIO_MODEL
+        logger.debug("Using model from LM_STUDIO_MODEL env: %s", _resolved_model)
         return _resolved_model
     # Fetch the first available model from LM Studio
+    logger.debug("No model configured – fetching available models from LM Studio…")
     client = get_client()
     models = client.models.list()
     model_ids = [m.id for m in models.data]
+    logger.debug("Models returned by LM Studio: %s", model_ids)
     if not model_ids:
         raise HTTPException(
             status_code=503,
@@ -150,27 +170,79 @@ async def _resolve_client_and_model(lm_studio_url: str | None, model: str | None
     Helper function to resolve the OpenAI client and model for a request.
     Validates the LM Studio URL, checks connectivity, and returns the client and model.
     """
+    logger.debug(
+        "Resolving client & model – lm_studio_url=%r, model=%r",
+        lm_studio_url,
+        model,
+    )
+
     # Resolve the effective LM Studio base URL and model for this request.
     # Frontend-supplied values take priority over server defaults.
     # Validate user-supplied URL to prevent SSRF (must be loopback only)
     if lm_studio_url:
+        logger.debug("Frontend supplied lm_studio_url=%s – validating…", lm_studio_url)
         _validate_lm_studio_url(lm_studio_url)
         parsed = urllib.parse.urlparse(lm_studio_url)
         port = int(parsed.port) if parsed.port else 1234  # integer – not user-controlled string
         effective_url = f"http://localhost:{port}/v1"
+        logger.debug("Effective URL after normalisation: %s", effective_url)
     else:
         effective_url = _normalize_base_url(LM_STUDIO_BASE_URL)
+        effective_url = LM_STUDIO_BASE_URL.rstrip("/")
+        if not effective_url.endswith("/v1"):
+            effective_url = effective_url + "/v1"
+        logger.debug("Using default effective URL: %s", effective_url)
 
     # Verify LM Studio is reachable before committing to a call
     health_url = effective_url + "/models"
+    logger.debug("Connectivity check → GET %s (timeout=5s)", health_url)
     try:
         async with httpx.AsyncClient(timeout=5.0) as http:
             resp = await http.get(
                 health_url,
                 headers={"Authorization": "Bearer lm-studio"},
             )
+            logger.debug(
+                "Connectivity check response: status=%s, content-length=%s",
+                resp.status_code,
+                resp.headers.get("content-length", "unknown"),
+            )
             resp.raise_for_status()
+    except httpx.ConnectError as exc:
+        logger.error(
+            "Cannot connect to LM Studio at %s – is it running? (%s: %s)",
+            effective_url,
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Local Server Offline: Cannot connect to LM Studio at {effective_url}. "
+                f"Make sure LM Studio is running and the server is started. ({exc})"
+            ),
+        ) from exc
+    except httpx.TimeoutException as exc:
+        logger.error(
+            "Timeout connecting to LM Studio at %s after 5s (%s: %s)",
+            effective_url,
+            type(exc).__name__,
+            exc,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Local Server Offline: LM Studio at {effective_url} did not respond "
+                f"within 5 seconds. ({exc})"
+            ),
+        ) from exc
     except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "Unexpected error reaching LM Studio at %s: %s: %s",
+            effective_url,
+            type(exc).__name__,
+            exc,
+        )
         raise HTTPException(
             status_code=503,
             detail=f"Local Server Offline: LM Studio is not reachable. ({exc})",
@@ -178,6 +250,11 @@ async def _resolve_client_and_model(lm_studio_url: str | None, model: str | None
 
     # Build a per-request client if the URL differs from the global default
     if effective_url != _normalize_base_url(LM_STUDIO_BASE_URL):
+    if effective_url != LM_STUDIO_BASE_URL.rstrip("/"):
+        logger.debug(
+            "URL differs from global default – creating per-request client for %s",
+            effective_url,
+        )
         req_client = OpenAI(base_url=effective_url, api_key="lm-studio")
     else:
         req_client = get_client()
@@ -185,9 +262,12 @@ async def _resolve_client_and_model(lm_studio_url: str | None, model: str | None
     # Resolve model: prefer request-supplied > env/auto-selected
     if model:
         req_model = model
+        logger.debug("Using request-supplied model: %s", req_model)
     else:
         req_model = get_model()
+        logger.debug("Using resolved model: %s", req_model)
 
+    logger.debug("Client & model resolved → model=%s, base_url=%s", req_model, effective_url)
     return req_client, req_model
 
 
@@ -274,12 +354,21 @@ async def health() -> dict:
 async def status() -> dict:
     """Check whether LM Studio is currently reachable."""
     health_url = _normalize_base_url(LM_STUDIO_BASE_URL) + "/models"
+    health_url = LM_STUDIO_BASE_URL.rstrip("/") + "/models"
+    logger.debug("Status check → GET %s", health_url)
     try:
         async with httpx.AsyncClient(timeout=5.0) as http:
             resp = await http.get(health_url)
+            logger.debug("Status check response: status=%s", resp.status_code)
             resp.raise_for_status()
+        logger.info("Status check: LM Studio is online at %s", LM_STUDIO_BASE_URL)
         return {"lm_studio": "online", "base_url": LM_STUDIO_BASE_URL}
     except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Status check: LM Studio is offline (%s: %s)",
+            type(exc).__name__,
+            exc,
+        )
         return {"lm_studio": "offline", "error": str(exc)}
 
 
@@ -296,11 +385,19 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt must not be empty.")
 
+    logger.debug(
+        "POST /generate – prompt length=%d, lm_studio_url=%r, model=%r",
+        len(request.prompt),
+        request.lm_studio_url,
+        request.model,
+    )
+
     try:
         req_client, req_model = await _resolve_client_and_model(
             request.lm_studio_url, request.model
         )
         result = generate_code(req_client, req_model, request.prompt)
+        logger.debug("POST /generate completed – response content length=%d", len(result.get("content", "")))
         return GenerateResponse(**result)
     except HTTPException:
         raise
@@ -327,6 +424,14 @@ async def critique(request: CritiqueRequest) -> StepResponse:
             status_code=400,
             detail="critic_type must be 'optimistic', 'pessimistic' (or legacy 'positive', 'negative')."
         )
+
+    logger.debug(
+        "POST /critique – critic_type=%s, draft length=%d, lm_studio_url=%r, model=%r",
+        request.critic_type,
+        len(request.draft_code),
+        request.lm_studio_url,
+        request.model,
+    )
 
     try:
         req_client, req_model = await _resolve_client_and_model(
@@ -357,6 +462,16 @@ async def synthesize(request: SynthesizeRequest) -> SynthesizeResponse:
     if not request.critic_comments.strip():
         raise HTTPException(status_code=400, detail="Critic comments must not be empty.")
 
+    logger.debug(
+        "POST /synthesize – prompt length=%d, draft length=%d, comments length=%d, "
+        "lm_studio_url=%r, model=%r",
+        len(request.prompt),
+        len(request.draft_code),
+        len(request.critic_comments),
+        request.lm_studio_url,
+        request.model,
+    )
+
     try:
         req_client, req_model = await _resolve_client_and_model(
             request.lm_studio_url, request.model
@@ -385,6 +500,15 @@ async def generate_agent_md_endpoint(request: AgentMdRequest) -> AgentMdResponse
         raise HTTPException(status_code=400, detail="Initial code must not be empty.")
     if not request.final_code.strip():
         raise HTTPException(status_code=400, detail="Final code must not be empty.")
+
+    logger.debug(
+        "POST /generate-agent-md – initial_code length=%d, final_code length=%d, "
+        "lm_studio_url=%r, model=%r",
+        len(request.initial_code),
+        len(request.final_code),
+        request.lm_studio_url,
+        request.model,
+    )
 
     try:
         req_client, req_model = await _resolve_client_and_model(
@@ -415,6 +539,13 @@ async def chat(request: ChatRequest) -> ChatResponse:
     """
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt must not be empty.")
+
+    logger.debug(
+        "POST /chat – prompt length=%d, lm_studio_url=%r, model=%r",
+        len(request.prompt),
+        request.lm_studio_url,
+        request.model,
+    )
 
     try:
         req_client, req_model = await _resolve_client_and_model(
