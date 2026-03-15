@@ -7,7 +7,7 @@ import logging
 import re
 from openai import OpenAI
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -48,6 +48,12 @@ AGENT_MD_SYSTEM = (
 
 def _chat(client: OpenAI, model: str, system: str, user: str) -> str:
     """Send a single-turn chat request and return the assistant text."""
+    logger.debug(
+        "LLM request → model=%s, system_prompt length=%d, user_prompt length=%d",
+        model,
+        len(system),
+        len(user),
+    )
     response = client.chat.completions.create(
         model=model,
         messages=[
@@ -56,7 +62,14 @@ def _chat(client: OpenAI, model: str, system: str, user: str) -> str:
         ],
         temperature=0.4,
     )
-    return response.choices[0].message.content or ""
+    content = response.choices[0].message.content or ""
+    logger.debug(
+        "LLM response ← model=%s, finish_reason=%s, content length=%d",
+        response.model,
+        response.choices[0].finish_reason,
+        len(content),
+    )
+    return content
 
 
 def extract_code(text: str) -> str:
@@ -76,6 +89,12 @@ def _chat_with_reasoning(client: OpenAI, model: str, system: str, user: str) -> 
     Send a single-turn chat request and return both the assistant text and reasoning/thinking.
     Returns a dict with 'content' and optionally 'reasoning' if the model provides it.
     """
+    logger.debug(
+        "LLM request (with reasoning) → model=%s, system_prompt length=%d, user_prompt length=%d",
+        model,
+        len(system),
+        len(user),
+    )
     response = client.chat.completions.create(
         model=model,
         messages=[
@@ -87,9 +106,16 @@ def _chat_with_reasoning(client: OpenAI, model: str, system: str, user: str) -> 
     result = {
         "content": response.choices[0].message.content or "",
     }
+    logger.debug(
+        "LLM response ← model=%s, finish_reason=%s, content length=%d",
+        response.model,
+        response.choices[0].finish_reason,
+        len(result["content"]),
+    )
     # Check if the model provides reasoning/thinking (e.g., o1 models)
     if hasattr(response.choices[0].message, 'reasoning_content') and response.choices[0].message.reasoning_content:
         result["reasoning"] = response.choices[0].message.reasoning_content
+        logger.debug("Model provided reasoning content (length: %d chars)", len(result["reasoning"]))
     return result
 
 
