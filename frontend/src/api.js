@@ -124,7 +124,7 @@ export async function checkServerStatus() {
 const LM_STUDIO_API_KEY = 'lm-studio';
 
 /**
- * Normalise an LM Studio base URL so it never ends with /v1 or /v1/.
+ * Normalize an LM Studio base URL so it never ends with /v1 or /v1/.
  * This avoids the double-/v1 bug when the caller appends `/v1/models`.
  *
  * @param {string} url – e.g. "http://localhost:1234" or "http://localhost:1234/v1"
