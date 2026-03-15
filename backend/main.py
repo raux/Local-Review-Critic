@@ -250,7 +250,6 @@ async def _resolve_client_and_model(lm_studio_url: str | None, model: str | None
 
     # Build a per-request client if the URL differs from the global default
     if effective_url != _normalize_base_url(LM_STUDIO_BASE_URL):
-    if effective_url != LM_STUDIO_BASE_URL.rstrip("/"):
         logger.debug(
             "URL differs from global default – creating per-request client for %s",
             effective_url,
