@@ -22,7 +22,7 @@ const POLL_MS      = 5000;
 
 export default function LmStudioConfig({ onConfigChange }) {
   const [url, setUrl]             = useState(
-    () => localStorage.getItem(LS_URL_KEY) || 'http://localhost:1234',
+    () => localStorage.getItem(LS_URL_KEY) || 'http://192.168.144.25:1234',
   );
   const [models, setModels]       = useState([]);
   const [model, setModel]         = useState(
@@ -186,7 +186,7 @@ export default function LmStudioConfig({ onConfigChange }) {
           type="text"
           value={url}
           onChange={handleUrlChange}
-          placeholder="http://localhost:1234"
+          placeholder="http://192.168.144.25:1234"
           className="flex-1 min-w-[180px] max-w-xs bg-slate-900 text-slate-200 text-xs
                      border border-slate-600 rounded px-2 py-1 focus:outline-none
                      focus:border-blue-500"
@@ -208,6 +208,16 @@ export default function LmStudioConfig({ onConfigChange }) {
               ))
           }
         </select>
+
+        {/* Retrieve Models button */}
+        <button
+          onClick={() => populateModels(url)}
+          disabled={status === 'connecting'}
+          className="text-xs px-3 py-1 rounded text-white bg-slate-700 hover:bg-slate-600
+                     disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          ↻ Models
+        </button>
 
         {/* Connect button */}
         <button

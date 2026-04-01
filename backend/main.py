@@ -34,17 +34,25 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)
 logging.getLogger("uvicorn.access").setLevel(logging.INFO)
 
-LM_STUDIO_BASE_URL: str = os.getenv("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
+LM_STUDIO_BASE_URL: str = os.getenv("LM_STUDIO_BASE_URL", "http://192.168.144.25:1234/v1")
 LM_STUDIO_MODEL: str = os.getenv("LM_STUDIO_MODEL", "")
 
 # Hostnames / IP ranges that are allowed as the LM Studio base URL.
-# LM Studio is always local, so we restrict to loopback addresses only
-# to prevent SSRF when the frontend passes lm_studio_url in the request body.
-_ALLOWED_HOSTS: frozenset[str] = frozenset({
-    "localhost",
-    "127.0.0.1",
-    "::1",
-})
+# Loopback addresses are always permitted. The host from the configured
+# LM_STUDIO_BASE_URL is also added automatically so that the default (or
+# operator-supplied) server address is accepted without further configuration.
+def _build_allowed_hosts() -> frozenset[str]:
+    hosts = {"localhost", "127.0.0.1", "::1"}
+    try:
+        parsed = urllib.parse.urlparse(LM_STUDIO_BASE_URL)
+        if parsed.hostname:
+            hosts.add(parsed.hostname)
+    except Exception:  # noqa: BLE001
+        pass
+    return frozenset(hosts)
+
+
+_ALLOWED_HOSTS: frozenset[str] = _build_allowed_hosts()
 
 
 def _normalize_base_url(url: str) -> str:
@@ -66,7 +74,7 @@ def _normalize_base_url(url: str) -> str:
 
 def _validate_lm_studio_url(url: str) -> str:
     """
-    Ensure *url* points only to a loopback address (localhost / 127.0.0.1 / ::1).
+    Ensure *url* points to an allowed LM Studio host.
     Returns the normalised URL string or raises HTTPException 400.
     """
     try:
@@ -76,11 +84,12 @@ def _validate_lm_studio_url(url: str) -> str:
         raise HTTPException(status_code=400, detail=f"Invalid LM Studio URL: {exc}") from exc
 
     if host not in _ALLOWED_HOSTS:
+        allowed = ", ".join(sorted(_ALLOWED_HOSTS))
         raise HTTPException(
             status_code=400,
             detail=(
                 f"LM Studio URL host '{host}' is not allowed. "
-                "Only localhost / 127.0.0.1 / ::1 are permitted."
+                f"Permitted hosts: {allowed}."
             ),
         )
     return url
