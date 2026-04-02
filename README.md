@@ -97,7 +97,8 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Configure LM Studio connection
-cp .env.example .env  # If .env.example exists, or create .env manually
+# Create a .env file from the template if available:
+cp backend/.env.example .env  # If .env.example exists, or create .env manually
 # Edit .env and set:
 # LM_STUDIO_BASE_URL=http://localhost:1234/v1
 # LM_STUDIO_MODEL=  # Optional: specify model name
