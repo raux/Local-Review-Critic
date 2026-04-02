@@ -1,28 +1,39 @@
 /**
  * LmStudioConfig.jsx
  *
- * Ported from raux/L-Bonsai frontend/main.js.
+ * Ported from raux/L-Bonsai frontend/main.js, extended to support both
+ * LM Studio and Ollama as local AI server providers.
  *
  * Renders a header bar with:
- *  - LM Studio URL input (persisted to localStorage)
- *  - Model selector dropdown (auto-populated from LM Studio, persisted)
+ *  - Provider selector (LM Studio / Ollama)
+ *  - Server URL input (persisted to localStorage, default changes with provider)
+ *  - Model selector dropdown (auto-populated from the selected server, persisted)
  *  - Connect button with 🔌 / ⏳ / ✓ states
  *  - Connection status badge (● Connected / ○ Disconnected / ⏳ Connecting)
  *  - Inline error / success message
  *
- * Auto-polls LM Studio every 5 seconds.
- * Calls onConfigChange({ lmStudioUrl, model }) whenever either value changes.
+ * Auto-polls the selected server every 5 seconds.
+ * Calls onConfigChange({ lmStudioUrl, model, provider }) whenever any value changes.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { fetchLmStudioModels, pingLmStudio } from '../api.js';
+import { fetchModels, pingServer, PROVIDER_DEFAULTS } from '../api.js';
 
-const LS_URL_KEY   = 'lmStudioUrl';
-const LS_MODEL_KEY = 'selectedModel';
-const POLL_MS      = 5000;
+const LS_URL_KEY      = 'lmStudioUrl';
+const LS_MODEL_KEY    = 'selectedModel';
+const LS_PROVIDER_KEY = 'selectedProvider';
+const POLL_MS         = 5000;
+
+const PROVIDER_LABELS = {
+  lm_studio: 'LM Studio',
+  ollama:    'Ollama',
+};
 
 export default function LmStudioConfig({ onConfigChange }) {
+  const [provider, setProvider] = useState(
+    () => localStorage.getItem(LS_PROVIDER_KEY) || 'lm_studio',
+  );
   const [url, setUrl]             = useState(
-    () => localStorage.getItem(LS_URL_KEY) || 'http://localhost:1234',
+    () => localStorage.getItem(LS_URL_KEY) || PROVIDER_DEFAULTS.lm_studio,
   );
   const [models, setModels]       = useState([]);
   const [model, setModel]         = useState(
@@ -47,7 +58,7 @@ export default function LmStudioConfig({ onConfigChange }) {
   }, []);
 
   const populateModels = useCallback(async (baseUrl) => {
-    const list = await fetchLmStudioModels(baseUrl);
+    const list = await fetchModels(baseUrl);
     setModels(list);
 
     if (list.length === 0) return;
@@ -67,11 +78,11 @@ export default function LmStudioConfig({ onConfigChange }) {
       new URL(baseUrl.startsWith('http') ? baseUrl : `http://${baseUrl}`);
     } catch {
       setStatus('disconnected');
-      showMessage('Invalid URL format. Please check the LM Studio URL.', 'error');
+      showMessage('Invalid URL format. Please check the server URL.', 'error');
       return false;
     }
 
-    const ok = await pingLmStudio(baseUrl);
+    const ok = await pingServer(baseUrl);
     if (ok) {
       setStatus('connected');
       showMessage(''); // clear any error
@@ -116,14 +127,35 @@ export default function LmStudioConfig({ onConfigChange }) {
     };
   }, [doHealthCheck, populateModels]); // stable callbacks – no stale-closure risk
 
-  // Notify parent whenever url or model changes
+  // Notify parent whenever url, model, or provider changes
   useEffect(() => {
-    onConfigChange?.({ lmStudioUrl: url, model });
-  }, [url, model, onConfigChange]);
+    onConfigChange?.({ lmStudioUrl: url, model, provider });
+  }, [url, model, provider, onConfigChange]);
 
   // -------------------------------------------------------------------------
   // Event handlers
   // -------------------------------------------------------------------------
+  const handleProviderChange = (e) => {
+    const val = e.target.value;
+    setProvider(val);
+    localStorage.setItem(LS_PROVIDER_KEY, val);
+
+    // Auto-update URL when switching providers if still at the old default
+    const oldDefault = PROVIDER_DEFAULTS[provider] || PROVIDER_DEFAULTS.lm_studio;
+    const newDefault = PROVIDER_DEFAULTS[val] || PROVIDER_DEFAULTS.lm_studio;
+    const currentUrl = urlRef.current;
+    if (!currentUrl || currentUrl === oldDefault) {
+      setUrl(newDefault);
+      urlRef.current = newDefault;
+      localStorage.setItem(LS_URL_KEY, newDefault);
+    }
+
+    // Reset models list and reconnect to new provider URL
+    setModels([]);
+    setModel('');
+    setStatus('connecting');
+  };
+
   const handleUrlChange = (e) => {
     const val = e.target.value.trim();
     setUrl(val);
@@ -143,9 +175,9 @@ export default function LmStudioConfig({ onConfigChange }) {
     const ok = await doHealthCheck(url);
     if (ok) {
       await populateModels(url);
-      showMessage('Successfully connected to LM Studio!', 'success');
+      showMessage(`Successfully connected to ${PROVIDER_LABELS[provider] || provider}!`, 'success');
     } else {
-      showMessage('Could not connect. Is LM Studio running?', 'error');
+      showMessage(`Could not connect. Is ${PROVIDER_LABELS[provider] || provider} running?`, 'error');
     }
     prevConnected.current = ok;
   };
@@ -153,6 +185,7 @@ export default function LmStudioConfig({ onConfigChange }) {
   // -------------------------------------------------------------------------
   // Derived UI state (mirrors L-Bonsai button / badge logic)
   // -------------------------------------------------------------------------
+  const providerLabel = PROVIDER_LABELS[provider] || provider;
   const badgeIcon = { connected: '●', disconnected: '○', connecting: '⏳' }[status];
   const badgeLabel = { connected: 'Connected', disconnected: 'Disconnected', connecting: 'Connecting...' }[status];
   const badgeColor = {
@@ -178,15 +211,27 @@ export default function LmStudioConfig({ onConfigChange }) {
       <div className="flex flex-wrap items-center gap-3">
         {/* Status badge */}
         <span className={`text-xs font-mono ${badgeColor}`}>
-          {badgeIcon} LM Studio {badgeLabel}
+          {badgeIcon} {providerLabel} {badgeLabel}
         </span>
+
+        {/* Provider selector */}
+        <select
+          value={provider}
+          onChange={handleProviderChange}
+          className="bg-slate-900 text-slate-200 text-xs border border-slate-600 rounded
+                     px-2 py-1 focus:outline-none focus:border-blue-500"
+          title="Select local AI provider"
+        >
+          <option value="lm_studio">LM Studio</option>
+          <option value="ollama">Ollama</option>
+        </select>
 
         {/* URL input */}
         <input
           type="text"
           value={url}
           onChange={handleUrlChange}
-          placeholder="http://localhost:1234"
+          placeholder={PROVIDER_DEFAULTS[provider] || 'http://localhost:1234'}
           className="flex-1 min-w-[180px] max-w-xs bg-slate-900 text-slate-200 text-xs
                      border border-slate-600 rounded px-2 py-1 focus:outline-none
                      focus:border-blue-500"
@@ -226,3 +271,4 @@ export default function LmStudioConfig({ onConfigChange }) {
     </div>
   );
 }
+

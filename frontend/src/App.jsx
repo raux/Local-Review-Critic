@@ -22,7 +22,7 @@ export default function App() {
   const [phase, setPhase]           = useState(null);   // null | 'generating' | 'reviewing' | 'applying'
   const [error, setError]           = useState('');
   const [input, setInput]           = useState('');
-  const [lmConfig, setLmConfig]     = useState({ lmStudioUrl: '', model: '' });
+  const [lmConfig, setLmConfig]     = useState({ lmStudioUrl: '', model: '', provider: 'lm_studio' });
 
   // Step-by-step execution state
   const [currentStep, setCurrentStep]               = useState(0);  // 0=initial, 1=generated, 2=critiqued, 3=synthesized
@@ -85,6 +85,7 @@ export default function App() {
         prompt,
         lmConfig.lmStudioUrl || null,
         lmConfig.model        || null,
+        lmConfig.provider     || null,
       );
 
       setDraftCode(data.generated_code);
@@ -108,7 +109,7 @@ export default function App() {
                         err?.response?.status === 503;
 
       const displayMsg = isOffline
-        ? '⚠️ Local Server Offline – make sure LM Studio is running and a model is loaded.'
+        ? '⚠️ Local Server Offline – make sure LM Studio or Ollama is running and a model is loaded.'
         : `❌ Error: ${detail}`;
 
       setError(displayMsg);
@@ -134,6 +135,7 @@ export default function App() {
         criticType,
         lmConfig.lmStudioUrl || null,
         lmConfig.model        || null,
+        lmConfig.provider     || null,
       );
 
       if (criticType === 'optimistic') {
@@ -171,7 +173,7 @@ export default function App() {
                         err?.response?.status === 503;
 
       const displayMsg = isOffline
-        ? '⚠️ Local Server Offline – make sure LM Studio is running and a model is loaded.'
+        ? '⚠️ Local Server Offline – make sure LM Studio or Ollama is running and a model is loaded.'
         : `❌ Error: ${detail}`;
 
       setError(displayMsg);
@@ -196,6 +198,7 @@ export default function App() {
         criticComments,
         lmConfig.lmStudioUrl || null,
         lmConfig.model        || null,
+        lmConfig.provider     || null,
       );
 
       setMessages(prev => [...prev, { role: 'generator', content: data.content, reasoning: data.reasoning }]);
@@ -218,7 +221,7 @@ export default function App() {
                         err?.response?.status === 503;
 
       const displayMsg = isOffline
-        ? '⚠️ Local Server Offline – make sure LM Studio is running and a model is loaded.'
+        ? '⚠️ Local Server Offline – make sure LM Studio or Ollama is running and a model is loaded.'
         : `❌ Error: ${detail}`;
 
       setError(displayMsg);
@@ -241,6 +244,7 @@ export default function App() {
         finalCode,
         lmConfig.lmStudioUrl || null,
         lmConfig.model        || null,
+        lmConfig.provider     || null,
       );
 
       setAnalysisMd(data.analysis_md);
@@ -256,7 +260,7 @@ export default function App() {
                         err?.response?.status === 503;
 
       const displayMsg = isOffline
-        ? '⚠️ Local Server Offline – make sure LM Studio is running and a model is loaded.'
+        ? '⚠️ Local Server Offline – make sure LM Studio or Ollama is running and a model is loaded.'
         : `❌ Error generating code analysis: ${detail}`;
 
       setError(displayMsg);
@@ -280,7 +284,7 @@ export default function App() {
       <header className="flex items-center gap-3 px-5 py-3 bg-slate-800 border-b border-slate-700 flex-shrink-0">
         <span className="text-lg font-semibold tracking-tight">🔍 Local Review Critic</span>
         <span className="text-xs text-slate-500 hidden sm:block">
-          Generator → Optimistic Coding ↔ Pessimistic/Defensive Coding → Synthesis · powered by LM Studio
+          Generator → Optimistic Coding ↔ Pessimistic/Defensive Coding → Synthesis · powered by LM Studio / Ollama
         </span>
       </header>
 

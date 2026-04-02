@@ -37,6 +37,8 @@ logging.getLogger("uvicorn.access").setLevel(logging.INFO)
 LM_STUDIO_BASE_URL: str = os.getenv("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
 LM_STUDIO_MODEL: str = os.getenv("LM_STUDIO_MODEL", "")
 
+OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+
 # Hostnames / IP ranges that are allowed as the LM Studio base URL.
 # LM Studio is always local, so we restrict to loopback addresses only
 # to prevent SSRF when the frontend passes lm_studio_url in the request body.
@@ -67,19 +69,20 @@ def _normalize_base_url(url: str) -> str:
 def _validate_lm_studio_url(url: str) -> str:
     """
     Ensure *url* points only to a loopback address (localhost / 127.0.0.1 / ::1).
+    Accepts URLs for both LM Studio and Ollama.
     Returns the normalised URL string or raises HTTPException 400.
     """
     try:
         parsed = urllib.parse.urlparse(url)
         host = parsed.hostname or ""
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"Invalid LM Studio URL: {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"Invalid server URL: {exc}") from exc
 
     if host not in _ALLOWED_HOSTS:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"LM Studio URL host '{host}' is not allowed. "
+                f"Server URL host '{host}' is not allowed. "
                 "Only localhost / 127.0.0.1 / ::1 are permitted."
             ),
         )
@@ -91,25 +94,39 @@ def _validate_lm_studio_url(url: str) -> str:
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """Verify that LM Studio is reachable when the server starts."""
-    health_url = _normalize_base_url(LM_STUDIO_BASE_URL) + "/models"
+    """Verify that at least one local AI server (LM Studio or Ollama) is reachable when the server starts."""
     logger.debug("Configured LM_STUDIO_BASE_URL = %s", LM_STUDIO_BASE_URL)
     logger.debug("Configured LM_STUDIO_MODEL    = %s", LM_STUDIO_MODEL or "(auto-detect)")
-    health_url = LM_STUDIO_BASE_URL.rstrip("/") + "/models"
-    logger.debug("Startup health-check → GET %s", health_url)
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as http:
-            resp = await http.get(health_url)
-            logger.debug("Startup health-check response: status=%s", resp.status_code)
-            resp.raise_for_status()
-        logger.info("LM Studio is reachable at %s", LM_STUDIO_BASE_URL)
-    except Exception as exc:  # noqa: BLE001
+    logger.debug("Configured OLLAMA_BASE_URL     = %s", OLLAMA_BASE_URL)
+
+    async def _check_server(base_url: str, label: str) -> bool:
+        health_url = base_url.rstrip("/") + "/models"
+        logger.debug("Startup health-check (%s) → GET %s", label, health_url)
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as http:
+                resp = await http.get(health_url)
+                logger.debug(
+                    "Startup health-check (%s) response: status=%s", label, resp.status_code
+                )
+                resp.raise_for_status()
+            logger.info("%s is reachable at %s", label, base_url)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "%s not reachable at startup (%s: %s).",
+                label,
+                type(exc).__name__,
+                exc,
+            )
+            return False
+
+    lm_ok = await _check_server(LM_STUDIO_BASE_URL, "LM Studio")
+    ollama_ok = await _check_server(OLLAMA_BASE_URL, "Ollama")
+
+    if not lm_ok and not ollama_ok:
         logger.warning(
-            "LM Studio not reachable at startup (%s: %s). "
-            "The server will still start but AI calls will fail until "
-            "LM Studio is running.",
-            type(exc).__name__,
-            exc,
+            "Neither LM Studio nor Ollama is reachable at startup. "
+            "The server will still start but AI calls will fail until a local AI server is running."
         )
     yield  # application runs here
 
@@ -149,51 +166,65 @@ def get_model() -> str:
         _resolved_model = LM_STUDIO_MODEL
         logger.debug("Using model from LM_STUDIO_MODEL env: %s", _resolved_model)
         return _resolved_model
-    # Fetch the first available model from LM Studio
-    logger.debug("No model configured – fetching available models from LM Studio…")
+    # Fetch the first available model from the default server
+    logger.debug("No model configured – fetching available models from local server…")
     client = get_client()
     models = client.models.list()
     model_ids = [m.id for m in models.data]
-    logger.debug("Models returned by LM Studio: %s", model_ids)
+    logger.debug("Models returned by local server: %s", model_ids)
     if not model_ids:
         raise HTTPException(
             status_code=503,
-            detail="LM Studio returned no available models.",
+            detail="Local AI server returned no available models.",
         )
     _resolved_model = model_ids[0]
     logger.info("Auto-selected model: %s", _resolved_model)
     return _resolved_model
 
 
-async def _resolve_client_and_model(lm_studio_url: str | None, model: str | None) -> tuple[OpenAI, str]:
+async def _resolve_client_and_model(
+    lm_studio_url: str | None,
+    model: str | None,
+    provider: str | None = None,
+) -> tuple[OpenAI, str]:
     """
     Helper function to resolve the OpenAI client and model for a request.
-    Validates the LM Studio URL, checks connectivity, and returns the client and model.
+    Supports both LM Studio and Ollama (any OpenAI-compatible local server).
+    Validates the URL, checks connectivity, and returns the client and model.
+
+    Provider resolution order:
+      1. If *lm_studio_url* is supplied by the frontend, use it (works for both LM Studio & Ollama).
+      2. If *provider* is "ollama" and no URL override given, use OLLAMA_BASE_URL from env.
+      3. Otherwise fall back to LM_STUDIO_BASE_URL from env.
     """
     logger.debug(
-        "Resolving client & model – lm_studio_url=%r, model=%r",
+        "Resolving client & model – lm_studio_url=%r, model=%r, provider=%r",
         lm_studio_url,
         model,
+        provider,
     )
 
-    # Resolve the effective LM Studio base URL and model for this request.
-    # Frontend-supplied values take priority over server defaults.
-    # Validate user-supplied URL to prevent SSRF (must be loopback only)
     if lm_studio_url:
-        logger.debug("Frontend supplied lm_studio_url=%s – validating…", lm_studio_url)
+        logger.debug("Frontend supplied server URL=%s – validating…", lm_studio_url)
         _validate_lm_studio_url(lm_studio_url)
         parsed = urllib.parse.urlparse(lm_studio_url)
-        port = int(parsed.port) if parsed.port else 1234  # integer – not user-controlled string
+        # Use the supplied port when present; fall back to provider-appropriate default
+        if parsed.port:
+            port = int(parsed.port)  # integer – not user-controlled string
+        elif provider == "ollama":
+            port = 11434
+        else:
+            port = 1234
         effective_url = f"http://localhost:{port}/v1"
         logger.debug("Effective URL after normalisation: %s", effective_url)
+    elif provider == "ollama":
+        effective_url = _normalize_base_url(OLLAMA_BASE_URL)
+        logger.debug("Using Ollama default URL: %s", effective_url)
     else:
         effective_url = _normalize_base_url(LM_STUDIO_BASE_URL)
-        effective_url = LM_STUDIO_BASE_URL.rstrip("/")
-        if not effective_url.endswith("/v1"):
-            effective_url = effective_url + "/v1"
-        logger.debug("Using default effective URL: %s", effective_url)
+        logger.debug("Using LM Studio default URL: %s", effective_url)
 
-    # Verify LM Studio is reachable before committing to a call
+    # Verify the local server is reachable before committing to a call
     health_url = effective_url + "/models"
     logger.debug("Connectivity check → GET %s (timeout=5s)", health_url)
     try:
@@ -210,7 +241,7 @@ async def _resolve_client_and_model(lm_studio_url: str | None, model: str | None
             resp.raise_for_status()
     except httpx.ConnectError as exc:
         logger.error(
-            "Cannot connect to LM Studio at %s – is it running? (%s: %s)",
+            "Cannot connect to local AI server at %s – is it running? (%s: %s)",
             effective_url,
             type(exc).__name__,
             exc,
@@ -218,13 +249,13 @@ async def _resolve_client_and_model(lm_studio_url: str | None, model: str | None
         raise HTTPException(
             status_code=503,
             detail=(
-                f"Local Server Offline: Cannot connect to LM Studio at {effective_url}. "
-                f"Make sure LM Studio is running and the server is started. ({exc})"
+                f"Local Server Offline: Cannot connect to local AI server at {effective_url}. "
+                f"Make sure LM Studio or Ollama is running. ({exc})"
             ),
         ) from exc
     except httpx.TimeoutException as exc:
         logger.error(
-            "Timeout connecting to LM Studio at %s after 5s (%s: %s)",
+            "Timeout connecting to local AI server at %s after 5s (%s: %s)",
             effective_url,
             type(exc).__name__,
             exc,
@@ -232,20 +263,20 @@ async def _resolve_client_and_model(lm_studio_url: str | None, model: str | None
         raise HTTPException(
             status_code=503,
             detail=(
-                f"Local Server Offline: LM Studio at {effective_url} did not respond "
+                f"Local Server Offline: Local AI server at {effective_url} did not respond "
                 f"within 5 seconds. ({exc})"
             ),
         ) from exc
     except Exception as exc:  # noqa: BLE001
         logger.error(
-            "Unexpected error reaching LM Studio at %s: %s: %s",
+            "Unexpected error reaching local AI server at %s: %s: %s",
             effective_url,
             type(exc).__name__,
             exc,
         )
         raise HTTPException(
             status_code=503,
-            detail=f"Local Server Offline: LM Studio is not reachable. ({exc})",
+            detail=f"Local Server Offline: Local AI server is not reachable. ({exc})",
         ) from exc
 
     # Build a per-request client if the URL differs from the global default
@@ -277,12 +308,14 @@ class ChatRequest(BaseModel):
     prompt: str
     lm_studio_url: str | None = None  # overrides .env when provided by the frontend
     model: str | None = None          # overrides auto-selected model when provided
+    provider: str | None = None       # "lm_studio" | "ollama"; None falls back to LM Studio
 
 
 class GenerateRequest(BaseModel):
     prompt: str
     lm_studio_url: str | None = None
     model: str | None = None
+    provider: str | None = None       # "lm_studio" | "ollama"; None falls back to LM Studio
 
 
 class CritiqueRequest(BaseModel):
@@ -290,6 +323,7 @@ class CritiqueRequest(BaseModel):
     critic_type: str = "pessimistic"  # "optimistic" or "pessimistic" (also accepts legacy "positive"/"negative")
     lm_studio_url: str | None = None
     model: str | None = None
+    provider: str | None = None       # "lm_studio" | "ollama"; None falls back to LM Studio
 
 
 class SynthesizeRequest(BaseModel):
@@ -298,6 +332,7 @@ class SynthesizeRequest(BaseModel):
     critic_comments: str
     lm_studio_url: str | None = None
     model: str | None = None
+    provider: str | None = None       # "lm_studio" | "ollama"; None falls back to LM Studio
 
 
 class ChatMessage(BaseModel):
@@ -334,6 +369,7 @@ class AgentMdRequest(BaseModel):
     final_code: str
     lm_studio_url: str | None = None
     model: str | None = None
+    provider: str | None = None       # "lm_studio" | "ollama"; None falls back to LM Studio
 
 
 class AgentMdResponse(BaseModel):
@@ -351,24 +387,34 @@ async def health() -> dict:
 
 @app.get("/status")
 async def status() -> dict:
-    """Check whether LM Studio is currently reachable."""
-    health_url = _normalize_base_url(LM_STUDIO_BASE_URL) + "/models"
-    health_url = LM_STUDIO_BASE_URL.rstrip("/") + "/models"
-    logger.debug("Status check → GET %s", health_url)
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as http:
-            resp = await http.get(health_url)
-            logger.debug("Status check response: status=%s", resp.status_code)
-            resp.raise_for_status()
-        logger.info("Status check: LM Studio is online at %s", LM_STUDIO_BASE_URL)
-        return {"lm_studio": "online", "base_url": LM_STUDIO_BASE_URL}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Status check: LM Studio is offline (%s: %s)",
-            type(exc).__name__,
-            exc,
-        )
-        return {"lm_studio": "offline", "error": str(exc)}
+    """Check whether LM Studio and/or Ollama is currently reachable."""
+
+    async def _ping(base_url: str, label: str) -> dict:
+        health_url = base_url.rstrip("/") + "/models"
+        logger.debug("Status check (%s) → GET %s", label, health_url)
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as http:
+                resp = await http.get(health_url)
+                logger.debug("Status check (%s) response: status=%s", label, resp.status_code)
+                resp.raise_for_status()
+            logger.info("Status check: %s is online at %s", label, base_url)
+            return {"status": "online", "base_url": base_url}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Status check: %s is offline (%s: %s)",
+                label,
+                type(exc).__name__,
+                exc,
+            )
+            return {"status": "offline", "error": type(exc).__name__}
+
+    lm_studio_status = await _ping(LM_STUDIO_BASE_URL, "LM Studio")
+    ollama_status = await _ping(OLLAMA_BASE_URL, "Ollama")
+
+    return {
+        "lm_studio": lm_studio_status,
+        "ollama": ollama_status,
+    }
 
 
 @app.post("/generate", response_model=GenerateResponse)
@@ -385,15 +431,16 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         raise HTTPException(status_code=400, detail="Prompt must not be empty.")
 
     logger.debug(
-        "POST /generate – prompt length=%d, lm_studio_url=%r, model=%r",
+        "POST /generate – prompt length=%d, lm_studio_url=%r, model=%r, provider=%r",
         len(request.prompt),
         request.lm_studio_url,
         request.model,
+        request.provider,
     )
 
     try:
         req_client, req_model = await _resolve_client_and_model(
-            request.lm_studio_url, request.model
+            request.lm_studio_url, request.model, request.provider
         )
         result = generate_code(req_client, req_model, request.prompt)
         logger.debug("POST /generate completed – response content length=%d", len(result.get("content", "")))
@@ -425,16 +472,17 @@ async def critique(request: CritiqueRequest) -> StepResponse:
         )
 
     logger.debug(
-        "POST /critique – critic_type=%s, draft length=%d, lm_studio_url=%r, model=%r",
+        "POST /critique – critic_type=%s, draft length=%d, lm_studio_url=%r, model=%r, provider=%r",
         request.critic_type,
         len(request.draft_code),
         request.lm_studio_url,
         request.model,
+        request.provider,
     )
 
     try:
         req_client, req_model = await _resolve_client_and_model(
-            request.lm_studio_url, request.model
+            request.lm_studio_url, request.model, request.provider
         )
         result = critique_code(req_client, req_model, request.draft_code, critic_type=request.critic_type)
         return StepResponse(**result)
@@ -463,17 +511,18 @@ async def synthesize(request: SynthesizeRequest) -> SynthesizeResponse:
 
     logger.debug(
         "POST /synthesize – prompt length=%d, draft length=%d, comments length=%d, "
-        "lm_studio_url=%r, model=%r",
+        "lm_studio_url=%r, model=%r, provider=%r",
         len(request.prompt),
         len(request.draft_code),
         len(request.critic_comments),
         request.lm_studio_url,
         request.model,
+        request.provider,
     )
 
     try:
         req_client, req_model = await _resolve_client_and_model(
-            request.lm_studio_url, request.model
+            request.lm_studio_url, request.model, request.provider
         )
         result = synthesize_code(
             req_client, req_model, request.prompt, request.draft_code, request.critic_comments
@@ -502,16 +551,17 @@ async def generate_agent_md_endpoint(request: AgentMdRequest) -> AgentMdResponse
 
     logger.debug(
         "POST /generate-agent-md – initial_code length=%d, final_code length=%d, "
-        "lm_studio_url=%r, model=%r",
+        "lm_studio_url=%r, model=%r, provider=%r",
         len(request.initial_code),
         len(request.final_code),
         request.lm_studio_url,
         request.model,
+        request.provider,
     )
 
     try:
         req_client, req_model = await _resolve_client_and_model(
-            request.lm_studio_url, request.model
+            request.lm_studio_url, request.model, request.provider
         )
         analysis = generate_agent_md(
             req_client, req_model, request.initial_code, request.final_code
@@ -540,15 +590,16 @@ async def chat(request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=400, detail="Prompt must not be empty.")
 
     logger.debug(
-        "POST /chat – prompt length=%d, lm_studio_url=%r, model=%r",
+        "POST /chat – prompt length=%d, lm_studio_url=%r, model=%r, provider=%r",
         len(request.prompt),
         request.lm_studio_url,
         request.model,
+        request.provider,
     )
 
     try:
         req_client, req_model = await _resolve_client_and_model(
-            request.lm_studio_url, request.model
+            request.lm_studio_url, request.model, request.provider
         )
         result = run_pipeline(req_client, req_model, request.prompt)
     except HTTPException:
