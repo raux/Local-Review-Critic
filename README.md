@@ -74,6 +74,9 @@ User Prompt
 - **LM Studio** ([Download here](https://lmstudio.ai/))
   - Install and download at least one language model
   - Start the local server (default: `http://localhost:1234`)
+- **Ollama** ([Download here](https://ollama.com/)): 
+  - Pull a model (e.g., `ollama pull llama3`)
+  - Set `LM_STUDIO_BASE_URL` to `http://localhost:11434/v1` and `LM_STUDIO_MODEL` to the model name.
 
 ## 🚀 Installation
 
